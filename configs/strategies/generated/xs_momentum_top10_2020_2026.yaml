@@ -1,0 +1,93 @@
+name: xs_momentum_top10_2020_2026
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 260
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ret5: close / Ref(close, 5) - 1
+  ret20: close / Ref(close, 20) - 1
+  ret60: close / Ref(close, 60) - 1
+  trend_gap: close / ma60 - 1
+  vol_ma20: Mean(volume, 20)
+  vol_ratio: volume / (vol_ma20 + 1e-10)
+  rank_ret20: CSPctRank(ret20)
+  rank_trend: CSPctRank(trend_gap)
+  score_momo: ret20 + ret60 * 0.5 + trend_gap * 0.2 + vol_ratio * 0.02
+
+signals:
+  buy_signal: (close > ma20) and (ma20 > ma60) and (ma60 > ma120) and (ret20 > 0.05) and (rank_ret20 > 0.97) and (rank_trend > 0.80) and (vol_ratio > 1.05)
+  sell_signal: (close < ma20) or (ret5 < -0.08)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_momo
+  sort: score_desc
+  topk: 30
+  lag: 1
+  wrap_first_signal: false
+  reason: xs_momentum_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.35
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.12
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 35
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: false
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false
+

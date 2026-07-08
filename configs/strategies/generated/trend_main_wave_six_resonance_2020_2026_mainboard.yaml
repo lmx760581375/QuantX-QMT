@@ -1,0 +1,133 @@
+name: trend_main_wave_six_resonance_2020_2026_mainboard
+description: "趋势主升浪六维共振：均线多头、健康位置、60日突破、倍量、MACD零上走强、相对强度。通达信 INDEXC 用全市场10日收益均值和横截面排名近似，ST过滤依赖 mainboard 股票池与交易校验。"
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: '2026-07-03'
+  look_back_days: 320
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma5: Mean(close, 5)
+  ma10: Mean(close, 10)
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ma250: Mean(close, 250)
+  ma_bull: (ma5 > ma10) and (ma10 > ma20) and (ma20 > ma60) and (ma60 > ma120)
+
+  dist_ma120: close / (ma120 + 1e-10)
+  position_ok: (close > ma60) and (dist_ma120 > 1.01) and (dist_ma120 < 1.35)
+
+  high60_prev: Max(Ref(high, 1), 60)
+  breakout60: (close > high60_prev) and (close > Ref(close, 1)) and (close > open)
+
+  vol_ma20: Mean(volume, 20)
+  vol_ma60: Mean(volume, 60)
+  vol_ratio20: volume / (vol_ma20 + 1e-10)
+  vol_ratio60: volume / (vol_ma60 + 1e-10)
+  double_volume: (vol_ratio20 > 2.0) and (vol_ratio60 > 2.0)
+
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  body_ratio: (close - open) / (high - low + 1e-10)
+  candle_ok: (ret1 > 0.02) and (ret1 < 0.095) and (close > open) and (body_ratio > 0.4)
+
+  ema12: EMA(close, 12)
+  ema26: EMA(close, 26)
+  dif: ema12 - ema26
+  dea: EMA(dif, 9)
+  macd_strong: (dif > dea) and (dif > 0) and (dea > 0) and (dif > Ref(dif, 1))
+
+  ret10: close / (Ref(close, 10) + 1e-10) - 1
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  ret60: close / (Ref(close, 60) + 1e-10) - 1
+  market_ret10: CSMean(ret10)
+  rank_ret10: CSPctRank(ret10)
+  relative_strength: (ret10 > market_ret10 + 0.005) and (rank_ret10 > 0.70)
+
+  market_ma60_strength: CSMean(close > ma60)
+  market_ok: market_ma60_strength >= 0.40
+  liquidity_amount: Mean((open + close) / 2 * volume, 20)
+  liquidity_rank: CSPctRank(liquidity_amount)
+  score: rank_ret10 * 1.0 + ret20 * 1.5 + ret60 * 0.6 + vol_ratio20 * 0.05 - (dist_ma120 - 1.12) * 0.2
+
+signals:
+  buy_signal: ma_bull and position_ok and breakout60 and double_volume and candle_ok and macd_strong and relative_strength and market_ok and (liquidity_rank > 0.30)
+  trend_break: close < ma20
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 10
+  lag: 1
+  wrap_first_signal: false
+  reason: trend_main_wave_six_resonance_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 5
+  max_positions_rules:
+    - when: market_ma60_strength < 0.40
+      value: 1
+    - when: market_ma60_strength < 0.50
+      value: 3
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: trend_break_ma20
+      when: trend_break
+      action: sell_all
+    - name: stop_loss_3pct
+      when: pnl_pct < -0.03
+      action: sell_all
+    - name: weak_after_3d
+      when: holding_days >= 3 and peak_pnl_pct < 0.02
+      action: sell_all
+    - name: high_volume_stall
+      when: holding_days >= 3 and vol_ratio20 > 1.8 and body_ratio < 0.15 and peak_pnl_pct > 0.08
+      action: sell_all
+    - name: trail_after_profit
+      when: holding_days >= 4 and peak_pnl_pct > 0.12 and drawdown_from_peak < -0.08
+      action: sell_all
+    - name: time_stop_30d
+      when: holding_days > 30
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

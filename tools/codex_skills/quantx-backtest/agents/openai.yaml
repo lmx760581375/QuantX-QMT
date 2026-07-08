@@ -1,0 +1,6 @@
+interface:
+  display_name: "QuantX Backtest"
+  short_description: "Run QuantX backtests, data updates, reports, and daily jobs"
+  default_prompt: "Use $quantx-backtest to validate configs, update QuantX market data, run backtests, inspect reports, or install the daily data cron."
+policy:
+  allow_implicit_invocation: true

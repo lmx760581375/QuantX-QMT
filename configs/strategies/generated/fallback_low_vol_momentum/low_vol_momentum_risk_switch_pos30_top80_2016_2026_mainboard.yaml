@@ -1,0 +1,134 @@
+name: low_vol_momentum_risk_switch_pos30_top80_2016_2026_mainboard
+title: 风险开关低波趋势动量
+description: 股票级低波趋势动量 fallback；不引入行业聚合，用市场广度控制仓位，用低波、趋势、回撤和流动性选择候选。
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2016-01-04
+  end: latest
+  look_back_days: 320
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ma250: Mean(close, 250)
+  ma60_slope: ma60 / (Ref(ma60, 20) + 1e-10) - 1
+
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  abs_ret1: Abs(ret1)
+  vol20_proxy: Mean(abs_ret1, 20)
+  vol60_proxy: Mean(abs_ret1, 60)
+
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  ret60: close / (Ref(close, 60) + 1e-10) - 1
+  ret120: close / (Ref(close, 120) + 1e-10) - 1
+  ret250: close / (Ref(close, 250) + 1e-10) - 1
+
+  high60: Max(close, 60)
+  high120: Max(close, 120)
+  drawdown60: close / (high60 + 1e-10) - 1
+  drawdown120: close / (high120 + 1e-10) - 1
+
+  turnover_amount: (open + close) / 2 * volume
+  turnover20: Mean(turnover_amount, 20)
+  liquidity_rank: CSPctRank(turnover20)
+
+  ret20_rank: CSPctRank(ret20)
+  ret60_rank: CSPctRank(ret60)
+  ret120_rank: CSPctRank(ret120)
+  low_vol_rank: 1 - CSPctRank(vol60_proxy)
+  dd_rank: CSPctRank(drawdown120)
+  ma_distance20: Abs(close / (ma20 + 1e-10) - 1)
+  ma_distance_rank: 1 - CSPctRank(ma_distance20)
+
+  market_ma20_strength: CSMean(close > ma20)
+  market_ma60_strength: CSMean(close > ma60)
+  market_ma120_strength: CSMean(close > ma120)
+  market_ret20: CSMean(ret20)
+  market_ret60: CSMean(ret60)
+  market_ok: (market_ma60_strength >= 0.50) and (market_ma120_strength >= 0.42) and (market_ret20 > -0.04)
+
+  score: low_vol_rank * 0.35 + dd_rank * 0.25 + ret120_rank * 0.20 + ret60_rank * 0.15 + ret20_rank * 0.10 + liquidity_rank * 0.10 + ma_distance_rank * 0.10
+
+signals:
+  trend_ok: (close > ma60) and (close > ma120) and (ma60 > ma120 * 0.98)
+  momentum_ok: (ret60 > 0.00) and (ret120 > -0.02) and (ret250 > -0.12)
+  drawdown_ok: (drawdown60 > -0.12) and (drawdown120 > -0.20)
+  vol_ok: (vol60_proxy < 0.032) and (vol20_proxy < 0.040)
+  liquidity_ok: liquidity_rank > 0.35
+  buy_signal: market_ok and trend_ok and momentum_ok and drawdown_ok and vol_ok and liquidity_ok
+  sell_signal: (market_ma60_strength < 0.42) or (close < ma120 * 0.97) or (drawdown120 < -0.25)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 80
+  lag: 1
+  wrap_first_signal: false
+  reason: low_vol_momentum_risk_switch_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 30
+  max_positions_rules:
+    - when: market_ma60_strength < 0.45
+      value: 1
+    - when: market_ma60_strength < 0.50
+      value: 10
+    - when: market_ma60_strength < 0.55
+      value: 20
+  cash_use_ratio: 0.75
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: market_breadth_break
+      when: market_ma60_strength < 0.42
+      action: sell_all
+    - name: trend_break_ma120_buffer
+      when: close < ma120 * 0.97
+      action: sell_all
+    - name: drawdown120_stop_25pct
+      when: drawdown120 < -0.25
+      action: sell_all
+    - name: time_review_180d
+      when: holding_days > 180 and close < ma60
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

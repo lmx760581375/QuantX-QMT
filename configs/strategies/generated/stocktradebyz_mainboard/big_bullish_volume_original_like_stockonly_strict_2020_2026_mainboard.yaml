@@ -1,0 +1,86 @@
+name: stocktradebyz_big_bullish_volume_original_like_2020_2026_mainboard_stockonly_strict
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 180
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  upper_wick: (high - Maximum(open, close)) / (Maximum(open, close) + 1e-10)
+  avg_vol20: Mean(Ref(volume, 1), 20)
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  score: liquidity_rank + ret1 * 2 - upper_wick * 5
+
+signals:
+  buy_signal: (close >= open) and (ret1 > 0.06) and (upper_wick < 0.02) and (volume >= avg_vol20 * 2.5) and (close < zxdq * 1.15)
+  sell_signal: not buy_signal
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 3
+  lag: 1
+  wrap_first_signal: false
+  reason: big_bullish_volume_original_like_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 3
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: not_selected
+      when: sell_signal
+      action: sell_all
+    - name: take_profit_5pct
+      when: pnl_pct > 0.05
+      action: sell_all
+    - name: stop_loss_2pct
+      when: pnl_pct < -0.02
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

@@ -1,0 +1,91 @@
+name: short_accel_top10_2020_2026
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 120
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma5: Mean(close, 5)
+  ma10: Mean(close, 10)
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ret3: close / Ref(close, 3) - 1
+  ret5: close / Ref(close, 5) - 1
+  ret20: close / Ref(close, 20) - 1
+  vol_ma10: Mean(volume, 10)
+  vol_ratio: volume / (vol_ma10 + 1e-10)
+  rank_ret5: CSPctRank(ret5)
+  score_accel: ret5 + ret20 * 0.5 + vol_ratio * 0.03
+
+signals:
+  buy_signal: (close > ma5) and (ma5 > ma10) and (ma10 > ma20) and (ma20 > ma60) and (ret5 > 0.06) and (rank_ret5 > 0.98) and (vol_ratio > 1.20)
+  sell_signal: (close < ma10) or (ret3 < -0.06)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_accel
+  sort: score_desc
+  topk: 20
+  lag: 1
+  wrap_first_signal: false
+  reason: short_accel_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.22
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.08
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 12
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: false
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

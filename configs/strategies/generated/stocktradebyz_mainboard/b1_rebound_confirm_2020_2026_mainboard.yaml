@@ -1,0 +1,105 @@
+name: stocktradebyz_b1_rebound_confirm_2020_2026_mainboard
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 260
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  llv9: Min(low, 9)
+  hhv9: Max(high, 9)
+  rsv: (close - llv9) / (hhv9 - llv9 + 1e-10) * 100
+  k: SMA_TDX(rsv, 3, 1)
+  d: SMA_TDX(k, 3, 1)
+  j: 3 * k - 2 * d
+  min_j5: Min(j, 5)
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  ma14: Mean(close, 14)
+  ma28: Mean(close, 28)
+  ma57: Mean(close, 57)
+  ma114: Mean(close, 114)
+  zxdkx: (ma14 + ma28 + ma57 + ma114) / 4
+  ma50: Mean(close, 50)
+  ma100: Mean(close, 100)
+  ma150: Mean(close, 150)
+  ret5: close / Ref(close, 5) - 1
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  score_rebound: (k - d) * 0.02 + (15 - min_j5) * 0.03 + liquidity_rank * 0.05
+
+signals:
+  rebound: Cross(k, d) and (min_j5 < 15)
+  trend_ok: (close > zxdkx) and (zxdq > zxdkx) and (ma50 > ma100) and (ma100 > ma150)
+  buy_signal: rebound and trend_ok and (liquidity_rank > 0.25)
+  sell_signal: (j > 85) or (close < ma28) or (ret5 < -0.08)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_rebound
+  sort: score_desc
+  topk: 40
+  lag: 1
+  wrap_first_signal: false
+  reason: stocktradebyz_b1_rebound_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.25
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.08
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 22
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: false
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false
+

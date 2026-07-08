@@ -1,0 +1,91 @@
+name: oversold_rebound_2020_2026
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 260
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma5: Mean(close, 5)
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ret3: close / Ref(close, 3) - 1
+  ret5: close / Ref(close, 5) - 1
+  ret20: close / Ref(close, 20) - 1
+  ret60: close / Ref(close, 60) - 1
+  rank_ret5: CSPctRank(ret5)
+  score_rebound: (0 - ret5) + ret60 * 0.2
+
+signals:
+  buy_signal: (close > ma120) and (ma60 > ma120) and (ret5 < -0.08) and (rank_ret5 < 0.05) and (ret60 > 0.03)
+  sell_signal: (close > ma20) or (ret3 > 0.08)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_rebound
+  sort: score_desc
+  topk: 30
+  lag: 1
+  wrap_first_signal: false
+  reason: oversold_rebound_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.16
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.08
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 12
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: false
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false
+

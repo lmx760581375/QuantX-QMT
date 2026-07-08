@@ -1,0 +1,112 @@
+name: stocktradebyz_bbikdj_original_like_2020_2026_mainboard_stockonly_strict
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 320
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma3: Mean(close, 3)
+  ma6: Mean(close, 6)
+  ma12: Mean(close, 12)
+  ma24: Mean(close, 24)
+  bbi: (ma3 + ma6 + ma12 + ma24) / 4
+  bbi_diff: bbi - Ref(bbi, 1)
+  bbi_up20: RollingQuantile(bbi_diff, 20, 0.20) >= 0
+  bbi_up60: RollingQuantile(bbi_diff, 60, 0.20) >= 0
+  bbi_up120: RollingQuantile(bbi_diff, 120, 0.20) >= 0
+  bbi_trend_ok: bbi_up20 or bbi_up60 or bbi_up120
+  close_range120: Max(close, 120) / (Min(close, 120) + 1e-10) - 1
+  j: KDJJ(high, low, close, 9)
+  j_q120: RollingQuantile(j, 120, 0.10)
+  ma60: Mean(close, 60)
+  ma60_cross120: Sum(Cross(close, ma60), 120)
+  ema12: EMA(close, 12)
+  ema26: EMA(close, 26)
+  dif: ema12 - ema26
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  ma14: Mean(close, 14)
+  ma28: Mean(close, 28)
+  ma57: Mean(close, 57)
+  ma114: Mean(close, 114)
+  zxdkx: (ma14 + ma28 + ma57 + ma114) / 4
+  ret1_abs: Abs(close / (Ref(close, 1) + 1e-10) - 1)
+  amplitude: (high - low) / (low + 1e-10)
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  score: liquidity_rank + (15 - j) * 0.02 + (close / (zxdkx + 1e-10) - 1) * 0.2
+
+signals:
+  day_ok: (ret1_abs < 0.02) and (amplitude < 0.07)
+  kdj_ok: (j < 15) or (j <= j_q120)
+  ma60_ok: (close > ma60) and (ma60_cross120 > 0)
+  zx_ok: (close > zxdkx) and (zxdq > zxdkx)
+  buy_signal: day_ok and (close_range120 <= 1.0) and bbi_trend_ok and kdj_ok and ma60_ok and (dif > 0) and zx_ok
+  sell_signal: not buy_signal
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 3
+  lag: 1
+  wrap_first_signal: false
+  reason: bbikdj_original_like_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 3
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: not_selected
+      when: sell_signal
+      action: sell_all
+    - name: take_profit_5pct
+      when: pnl_pct > 0.05
+      action: sell_all
+    - name: stop_loss_2pct
+      when: pnl_pct < -0.02
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

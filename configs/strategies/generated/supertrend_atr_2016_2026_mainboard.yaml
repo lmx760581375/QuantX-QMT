@@ -1,0 +1,90 @@
+name: supertrend_atr_2016_2026_mainboard
+description: "SuperTrend ATR 趋势跟踪策略的 QuantX 配置版：用 ATR 动态波动通道生成超级趋势线，价格上穿且方向转为上升时入场；跌破趋势线、ATR 初始止损或盈利后的回撤止损出场。当前 QuantX 执行器为 A 股多头日线模型，因此这是股票主板验证版，不等同于期货多空 tick 滑点版本。"
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2016-01-04
+  end: 2026-06-24
+  look_back_days: 120
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  atr: ATR(high, low, close, 10)
+  st_line: SuperTrend(high, low, close, 10, 3.0)
+  st_dir: SuperTrend(high, low, close, 10, 3.0, 'direction')
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  turnover_amount: (open + close) / 2 * volume
+  turnover20: Mean(turnover_amount, 20)
+  score: CSPctRank(turnover20) + ret20
+  hl2: (high + low) / 2
+
+signals:
+  trend_up: st_dir > 0
+  trend_turn_up: (st_dir > 0) and (Ref(st_dir, 1) < 0)
+  cross_up: Cross(close, st_line)
+  cross_down: Cross(st_line, close)
+  liquidity_ok: turnover20 > 100000000
+  buy_signal: liquidity_ok and trend_up and (cross_up or trend_turn_up)
+  sell_signal: cross_down or (st_dir < 0)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 10
+  lag: 1
+  wrap_first_signal: false
+  reason: supertrend_atr_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+
+execution:
+  deal_price: hl2
+  sell_rules:
+    - name: supertrend_breakdown
+      when: sell_signal
+      action: sell_all
+    - name: atr_initial_stop_2x
+      when: price < cost_price - 2.0 * atr
+      action: sell_all
+    - name: trailing_stop_after_10pct
+      when: peak_pnl_pct > 0.10 and price < peak_price - 0.50 * (peak_price - cost_price)
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0001
+  min_commission: 5.0
+  stamp_tax_rate: 0.0005
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.00002
+  slippage: 0.0001
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: hl2
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true

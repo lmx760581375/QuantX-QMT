@@ -1,0 +1,1613 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuantX 量化控制台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080908;
+      --panel: #10120f;
+      --panel-2: #151711;
+      --line: #30352a;
+      --line-bright: #5b684a;
+      --ink: #f3f0df;
+      --muted: #a2a98f;
+      --gold: #d8b45f;
+      --green: #49d17c;
+      --red: #f06456;
+      --cyan: #7ccbd1;
+      --paper: #e8dfc7;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+        var(--bg);
+      background-size: 28px 28px;
+      color: var(--ink);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+    button, input, select, textarea {
+      font: inherit;
+      letter-spacing: 0;
+    }
+    button {
+      height: 34px;
+      border: 1px solid var(--line-bright);
+      background: #171a13;
+      color: var(--ink);
+      padding: 0 12px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button.primary {
+      background: var(--paper);
+      color: #11130f;
+      border-color: var(--paper);
+      font-weight: 700;
+    }
+    button.danger { border-color: #73342f; color: #ffd5cf; }
+    select, input {
+      height: 34px;
+      border: 1px solid var(--line);
+      background: #090b09;
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0 10px;
+      min-width: 0;
+    }
+    textarea {
+      width: 100%;
+      min-height: 460px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 14px;
+      background: #090b09;
+      color: var(--paper);
+      line-height: 1.55;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 232px minmax(0, 1fr);
+    }
+    aside {
+      border-right: 1px solid var(--line);
+      background: rgba(10, 11, 9, .96);
+      padding: 18px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .brand {
+      height: 74px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+    .brand-title { font-size: 23px; font-weight: 800; }
+    .brand-sub { color: var(--gold); font-size: 12px; margin-top: 4px; }
+    .nav button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 42px;
+      margin: 6px 0;
+      background: transparent;
+      border-color: transparent;
+      color: var(--muted);
+      text-align: left;
+    }
+    .nav button.active {
+      color: var(--ink);
+      border-color: var(--line-bright);
+      background: #171a13;
+    }
+    .nav-k { color: var(--gold); font-size: 11px; }
+    main { min-width: 0; }
+    header {
+      min-height: 74px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 22px;
+      background: rgba(8, 9, 8, .9);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      backdrop-filter: blur(12px);
+    }
+    h1 { margin: 0; font-size: 24px; }
+    h2 { margin: 0 0 12px; font-size: 17px; }
+    h3 { margin: 0; font-size: 14px; }
+    .page {
+      display: none;
+      padding: 18px 22px 42px;
+      max-width: 1680px;
+      margin: 0 auto;
+    }
+    .page.active { display: block; }
+    .status-line { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; gap: 14px; }
+    .grid.cols-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .panel {
+      background: rgba(16, 18, 15, .94);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+    .panel-head {
+      min-height: 48px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .panel-body { padding: 12px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .metric {
+      padding: 14px;
+      border-top: 2px solid var(--line-bright);
+      min-height: 96px;
+    }
+    .metric .label { color: var(--muted); font-size: 12px; }
+    .metric .value { margin-top: 10px; font-size: 25px; font-weight: 800; }
+    .metric .note { margin-top: 6px; color: var(--gold); font-size: 12px; }
+    .desc {
+      margin-top: 10px;
+      color: var(--muted);
+      line-height: 1.55;
+      white-space: normal;
+      font-size: 13px;
+    }
+    .subtle { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .strategy-title { font-weight: 700; font-size: 14px; }
+    .metric-line {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .metric-line span { white-space: nowrap; }
+    .note-cell {
+      min-width: 360px;
+      max-width: 620px;
+      white-space: normal;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .advanced-path {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .advanced-path summary { cursor: pointer; }
+    .advanced-path input { margin-top: 8px; width: 100%; }
+    .up { color: var(--red); }
+    .down { color: var(--green); }
+    .bad { color: #ff9a8e; }
+    .gold { color: var(--gold); }
+    .muted { color: var(--muted); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th.left, td.left { text-align: left; }
+    th { color: var(--muted); font-weight: 600; background: #11130f; position: sticky; top: 0; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: #171a13; }
+    tr.selected-row { background: #181b13; }
+    .table-wrap { overflow: auto; max-height: 520px; }
+    canvas {
+      width: 100%;
+      height: 280px;
+      display: block;
+      background: #080908;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+    }
+    #klineCanvas { height: 520px; cursor: grab; }
+    #klineCanvas.dragging { cursor: grabbing; }
+    pre {
+      margin: 0;
+      background: #090b09;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 12px;
+      color: var(--paper);
+      overflow: auto;
+      max-height: 280px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .split {
+      display: grid;
+      grid-template-columns: 390px minmax(0, 1fr);
+      gap: 14px;
+    }
+    .empty {
+      min-height: 120px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 4px;
+    }
+    .symbol-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .symbol-tile {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 10px;
+      background: #0b0d0a;
+      min-height: 68px;
+    }
+    .symbol-tile .label { color: var(--muted); font-size: 12px; }
+    .symbol-tile .value { margin-top: 7px; font-size: 18px; font-weight: 800; }
+    .pattern-figures {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .pattern-figure img {
+      display: block;
+      width: 100%;
+      max-height: 460px;
+      object-fit: contain;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #080908;
+    }
+    .pattern-figure .label {
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 980px) {
+      .shell { grid-template-columns: 1fr; }
+      aside { position: relative; height: auto; }
+      .grid.cols-2, .grid.cols-3, .grid.cols-4, .split { grid-template-columns: 1fr; }
+      header { position: relative; align-items: flex-start; flex-direction: column; }
+      th, td { font-size: 12px; padding: 7px 6px; }
+      .symbol-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <div class="brand-title">QuantX</div>
+        <div class="brand-sub">中文量化实验场</div>
+      </div>
+      <nav class="nav">
+        <button data-page="leaderboard" class="active" onclick="showPage('leaderboard')"><span>榜单</span><span class="nav-k">01</span></button>
+        <button data-page="configs" onclick="showPage('configs')"><span>策略配置</span><span class="nav-k">02</span></button>
+        <button data-page="reports" onclick="showPage('reports')"><span>收益报告</span><span class="nav-k">03</span></button>
+        <button data-page="trades" onclick="showPage('trades')"><span>交割明细</span><span class="nav-k">04</span></button>
+        <button data-page="symbol" onclick="showPage('symbol')"><span>个股 B/S</span><span class="nav-k">05</span></button>
+        <button data-page="patterns" onclick="showPage('patterns')"><span>形态分析</span><span class="nav-k">06</span></button>
+        <button data-page="data" onclick="showPage('data')"><span>数据层</span><span class="nav-k">07</span></button>
+      </nav>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <h1 id="pageTitle">榜单</h1>
+          <div class="status-line" id="statusLine">加载中</div>
+        </div>
+        <div class="toolbar">
+          <select id="globalReportSelect" onchange="selectReport(this.value)"></select>
+          <button onclick="refreshAll()">刷新</button>
+        </div>
+      </header>
+
+      <section id="page-leaderboard" class="page active">
+        <div class="grid cols-4" id="topMetrics"></div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head">
+            <h2>策略 Leaderboard</h2>
+            <span class="pill" id="leaderboardCount">0 战法</span>
+          </div>
+          <div class="table-wrap" id="leaderboardTable"></div>
+        </div>
+      </section>
+
+      <section id="page-configs" class="page">
+        <div class="split">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>配置列表</h2>
+              <button onclick="newConfig()">新建</button>
+            </div>
+            <div class="panel-body">
+              <select id="configSelect" style="width:100%" onchange="loadConfig()"></select>
+              <div class="desc" id="configDescription"></div>
+              <details class="advanced-path">
+                <summary>高级路径</summary>
+                <input id="configPathInput" placeholder="generated/name.yaml" />
+              </details>
+              <div class="toolbar" style="margin-top:10px">
+                <button class="primary" onclick="saveConfig()">保存</button>
+                <button onclick="validateConfig()">校验</button>
+                <button onclick="runBacktest()">运行回测</button>
+                <button class="danger" onclick="deleteConfig()">删除</button>
+              </div>
+              <div style="margin-top:12px" id="configValidation"></div>
+              <pre style="margin-top:12px" id="taskLog"></pre>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>YAML 编辑器</h2>
+              <input id="symbolLimit" type="number" placeholder="symbol limit" style="width:140px" />
+            </div>
+            <div class="panel-body">
+              <textarea id="configEditor"></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-reports" class="page">
+        <div class="grid cols-4" id="reportMetrics"></div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>净值曲线</h2><span class="pill" id="reportName"></span></div>
+            <div class="panel-body"><canvas id="equityCanvas" width="1200" height="320"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>回撤</h2><span class="pill" id="tradeCount"></span></div>
+            <div class="panel-body"><canvas id="drawdownCanvas" width="1200" height="320"></canvas></div>
+          </div>
+        </div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>年度收益</h2><span class="pill" id="annualReturnCount"></span></div>
+            <div class="table-wrap" id="annualReturnsTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>下一交易日操作指南</h2><span class="pill" id="nextGuideDate"></span></div>
+            <div class="table-wrap" id="nextSessionGuide"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>策略收益记录</h2><span class="pill">战法</span></div>
+          <div class="table-wrap" id="reportsTable"></div>
+        </div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>最大盈利交易</h2><span class="pill" id="gainCount"></span></div>
+            <div class="table-wrap" id="topGainsTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>最大亏损交易</h2><span class="pill" id="lossCount"></span></div>
+            <div class="table-wrap" id="topLossesTable"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-trades" class="page">
+        <div class="grid cols-2">
+          <div class="panel">
+            <div class="panel-head"><h2>当前持仓</h2><span class="pill" id="holdingCount"></span></div>
+            <div class="table-wrap" id="holdingsTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>已清仓交易</h2><span class="pill" id="closedCount"></span></div>
+            <div class="table-wrap" id="closedPositionsTable"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head">
+            <h2>历史交割</h2>
+            <div class="toolbar">
+              <input id="tradeFilter" placeholder="股票代码 / BUY / SELL / 拒单原因" oninput="renderTrades()" />
+              <select id="tradeLimit" onchange="renderTrades()">
+                <option value="200">最近 200</option>
+                <option value="500">最近 500</option>
+                <option value="99999">全部</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap" id="tradesTable"></div>
+        </div>
+      </section>
+
+      <section id="page-symbol" class="page">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 id="symbolTitle">个股 B/S 点</h2>
+            <div class="toolbar">
+              <input id="symbolInput" placeholder="SH600000" />
+              <button onclick="loadSymbolDetail()">打开</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="symbol-summary" id="symbolSummary"></div>
+            <canvas id="klineCanvas" width="1400" height="620"></canvas>
+          </div>
+        </div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>该股交割</h2><span class="pill" id="symbolTradeCount"></span></div>
+            <div class="table-wrap" id="symbolTradesTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>配对收益</h2><span class="pill" id="roundTripCount"></span></div>
+            <div class="table-wrap" id="roundTripsTable"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-patterns" class="page">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>交易形态分析</h2>
+            <div class="toolbar">
+              <select id="patternAnalysisSelect" onchange="selectPatternAnalysis(this.value)"></select>
+              <button onclick="loadPatternAnalyses()">刷新</button>
+              <button class="primary" onclick="buildPatternFromCurrentRun()">分析当前回测</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="grid cols-4" id="patternMetrics"></div>
+            <div class="desc" id="patternOutcomeLine"></div>
+            <div class="table-wrap" id="patternExitReview" style="margin-top:12px"></div>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>聚类画像</h2><span class="pill" id="patternClusterCount">0 类</span></div>
+            <div class="table-wrap" id="patternClustersTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>模型检验</h2>
+              <div class="toolbar">
+                <select id="patternTargetSelect" onchange="setPatternTarget(this.value)">
+                  <option value="success">最终成功</option>
+                  <option value="opportunity">给过机会</option>
+                  <option value="fade_after_peak">峰后回落</option>
+                  <option value="efficient_capture">有效捕捉</option>
+                </select>
+                <span class="pill" id="patternModelCount">0 模型</span>
+              </div>
+            </div>
+            <div class="table-wrap" id="patternModelsTable"></div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>聚类 K 线图</h2><span class="pill" id="patternFigureCluster"></span></div>
+          <div class="panel-body" id="patternFigures"></div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>聚类样本</h2><span class="pill" id="patternSampleCount">0 笔</span></div>
+            <div class="table-wrap" id="patternSamplesTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>相似交易</h2><span class="pill" id="patternSimilarTarget"></span></div>
+            <div class="table-wrap" id="patternSimilarTable"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-data" class="page">
+        <div class="grid cols-3">
+          <div class="panel"><div class="panel-head"><h2>数据状态</h2><button onclick="loadDataStatus()">刷新</button></div><div class="panel-body" id="dataCards"></div></div>
+          <div class="panel"><div class="panel-head"><h2>健康检查</h2><button onclick="healthCheck()">检查</button></div><div class="panel-body"><pre id="healthOutput"></pre></div></div>
+          <div class="panel"><div class="panel-head"><h2>更新计划</h2><button onclick="dataUpdatePlan()">生成</button></div><div class="panel-body"><pre id="updatePlan"></pre></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      configs: [],
+      reports: [],
+      currentReportId: '',
+      currentReport: null,
+      patternAnalyses: [],
+      currentPatternAnalysisId: '',
+      currentPatternAnalysis: null,
+      currentPatternClusterId: '',
+      currentPatternSamples: [],
+      currentPatternSimilar: null,
+      currentPatternTarget: 'success',
+      currentPage: 'leaderboard',
+      kline: {
+        bars: [],
+        trades: [],
+        viewStart: 0,
+        viewEnd: 0,
+        focusDate: '',
+        dragging: false,
+        dragX: 0,
+        dragStart: 0,
+        dragEnd: 0,
+      },
+    };
+    const titles = {
+      leaderboard: '榜单',
+      configs: '策略配置',
+      reports: '收益报告',
+      trades: '交割明细',
+      symbol: '个股 B/S',
+      patterns: '形态分析',
+      data: '数据层',
+    };
+    const qs = new URLSearchParams(location.search);
+
+    async function api(path, options) {
+      const res = await fetch(path, options);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+    function pct(x) { return x == null || Number.isNaN(Number(x)) ? '-' : (Number(x) * 100).toFixed(2) + '%'; }
+    function num(x, d = 2) { return x == null || Number.isNaN(Number(x)) ? '-' : Number(x).toLocaleString('zh-CN', {maximumFractionDigits: d}); }
+    function axisNum(x) {
+      if (x == null || Number.isNaN(Number(x))) return '-';
+      const value = Number(x);
+      if (Math.abs(value) >= 1000000) return (value / 10000).toFixed(0) + '万';
+      if (Math.abs(value) >= 10000) return (value / 10000).toFixed(1) + '万';
+      if (Math.abs(value) >= 1000) return value.toFixed(0);
+      if (Math.abs(value) >= 10) return value.toFixed(2);
+      return value.toFixed(3);
+    }
+    function cls(x) { return Number(x) >= 0 ? 'up' : 'down'; }
+    function symbolUrl(symbol, focusDate = '', focusStart = '', focusEnd = '') {
+      const params = new URLSearchParams({page: 'symbol', run_id: state.currentReportId, symbol});
+      if (focusDate) params.set('focus_date', focusDate);
+      if (focusStart) params.set('focus_start', focusStart);
+      if (focusEnd) params.set('focus_end', focusEnd);
+      return `/?${params.toString()}`;
+    }
+    function openSymbol(symbol, focusDate = '', focusStart = '', focusEnd = '') {
+      window.open(symbolUrl(symbol, focusDate, focusStart, focusEnd), '_blank');
+    }
+    function reportTitle(report) {
+      return report?.display_title || report?.title || report?.summary?.display_title || report?.summary?.title || report?.name || report?.run_id || '策略实验';
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+    function setStatus(text) { document.getElementById('statusLine').textContent = text; }
+
+    window.addEventListener('error', event => {
+      setStatus(`页面错误: ${event.message}`);
+      console.error(event.error || event.message);
+    });
+    window.addEventListener('unhandledrejection', event => {
+      const reason = event.reason?.message || event.reason || '未知错误';
+      setStatus(`异步错误: ${reason}`);
+      console.error(event.reason);
+    });
+
+    function showPage(page) {
+      state.currentPage = page;
+      document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+      document.querySelector(`#page-${page}`).classList.add('active');
+      document.querySelectorAll('.nav button').forEach(btn => btn.classList.toggle('active', btn.dataset.page === page));
+      document.getElementById('pageTitle').textContent = titles[page] || page;
+      if (page === 'trades') renderTrades();
+      if (page === 'reports' && state.currentReport) renderReport();
+      if (page === 'leaderboard') renderLeaderboard();
+      if (page === 'patterns') renderPatternAnalysis();
+      if (page === 'data') loadDataStatus();
+    }
+
+    async function refreshAll() {
+      try {
+        setStatus('加载配置...');
+        await loadConfigs();
+        setStatus(`配置 ${state.configs.length}，加载报告...`);
+        loadDataStatus().catch(err => setStatus(`数据层加载失败: ${err.message}`));
+        loadPatternAnalyses().catch(err => setStatus(`形态分析加载失败: ${err.message}`));
+        await loadReports();
+        const run = qs.get('run_id') || qs.get('run') || state.currentReportId;
+        if (run && run !== state.currentReportId) await selectReport(run);
+        const page = qs.get('page');
+        if (page && titles[page]) showPage(page);
+        const symbol = qs.get('symbol');
+        if (symbol) {
+          document.getElementById('symbolInput').value = symbol;
+          showPage('symbol');
+          await loadSymbolDetail();
+        }
+        setStatus(`配置 ${state.configs.length} · 战法 ${state.reports.length}`);
+      } catch (err) {
+        setStatus(`加载失败: ${err.message}`);
+        console.error(err);
+      }
+    }
+
+    async function loadConfigs() {
+      state.configs = await api('/api/configs');
+      const select = document.getElementById('configSelect');
+      select.innerHTML = state.configs.map(c => `<option value="${esc(c.path)}">${esc(c.display_title || c.title || c.name || c.path)}</option>`).join('');
+      if (state.configs.length && !document.getElementById('configEditor').value) await loadConfig();
+    }
+    async function loadConfig() {
+      const path = document.getElementById('configSelect').value;
+      if (!path) return;
+      const data = await api('/api/configs/' + encodeURIComponent(path));
+      document.getElementById('configPathInput').value = data.path;
+      document.getElementById('configEditor').value = data.content;
+      const meta = state.configs.find(c => c.path === data.path);
+      document.getElementById('configDescription').textContent = meta?.description || '';
+    }
+    function newConfig() {
+      document.getElementById('configPathInput').value = 'generated/new_strategy.yaml';
+      document.getElementById('configEditor').value = [
+        'name: new_strategy',
+        'description: 中文描述这个策略的核心逻辑、选股条件、调仓方式和卖出规则',
+        'version: 1',
+        'data:',
+        '  provider_uri: data/qlib_data_fixed',
+        '  universe: all_a',
+        '  start: 2021-01-04',
+        '  end: 2025-10-17',
+        'fields:',
+        '  close: $close',
+        'signals:',
+        '  buy_signal: close > Ref(close, 1)',
+        'selector:',
+        '  where: buy_signal',
+        'rebalance:',
+        '  type: equal_weight',
+        '  max_positions: 10',
+        'execution:',
+        '  sell_rules: []',
+      ].join('\n');
+    }
+    async function saveConfig() {
+      const path = document.getElementById('configPathInput').value || document.getElementById('configSelect').value;
+      await api('/api/configs/' + encodeURIComponent(path), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: document.getElementById('configEditor').value})
+      });
+      await loadConfigs();
+      setStatus(`已保存 ${path}`);
+    }
+    async function deleteConfig() {
+      const path = document.getElementById('configPathInput').value || document.getElementById('configSelect').value;
+      if (!path || !confirm(`删除 ${path} ?`)) return;
+      await api('/api/configs/' + encodeURIComponent(path), {method: 'DELETE'});
+      document.getElementById('configEditor').value = '';
+      document.getElementById('configPathInput').value = '';
+      await loadConfigs();
+      setStatus(`已删除 ${path}`);
+    }
+    async function validateConfig() {
+      const data = await api('/api/configs/validate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({content: document.getElementById('configEditor').value})
+      });
+      document.getElementById('configValidation').innerHTML = data.ok
+        ? `<span class="pill gold">通过</span> <span class="muted">${data.formula_count} 个公式</span><pre style="margin-top:10px">${esc(JSON.stringify(data.formula_order, null, 2))}</pre>`
+        : `<span class="pill bad">失败</span> <span class="bad">${esc(data.error_type)}: ${esc(data.message)}</span>`;
+    }
+    async function runBacktest() {
+      const limit = document.getElementById('symbolLimit').value;
+      const task = await api('/api/backtests', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          config_path: document.getElementById('configSelect').value,
+          symbol_limit: limit ? Number(limit) : null,
+        })
+      });
+      pollTask(task.task_id);
+    }
+    async function pollTask(taskId) {
+      const data = await api('/api/backtests/' + taskId);
+      document.getElementById('taskLog').textContent = data.logs.join('\n');
+      setStatus(`${taskId} · ${data.status}`);
+      if (data.status === 'success') {
+        await loadReports();
+        if (data.run_id) await selectReport(data.run_id);
+        return;
+      }
+      if (data.status !== 'failed') setTimeout(() => pollTask(taskId), 1400);
+    }
+
+    async function loadReports() {
+      state.reports = (await api('/api/reports')).sort((a, b) => Number(b.total_return || 0) - Number(a.total_return || 0));
+      const select = document.getElementById('globalReportSelect');
+      select.innerHTML = state.reports.map(r => `<option value="${esc(r.run_id)}">${esc(reportTitle(r))} · ${pct(r.total_return)}</option>`).join('');
+      renderLeaderboard();
+      renderReportsTable();
+      if (!state.currentReportId && state.reports.length) await selectReport(state.reports[0].run_id);
+    }
+    async function selectReport(runId) {
+      if (!runId) return;
+      state.currentReportId = runId;
+      document.getElementById('globalReportSelect').value = runId;
+      state.currentReport = await api('/api/reports/' + encodeURIComponent(runId));
+      renderTopMetrics();
+      renderReport();
+      renderTrades();
+    }
+
+    function renderTopMetrics() {
+      const r = state.currentReport;
+      const m = r?.metrics || {};
+      const s = r?.summary || {};
+      const rows = [
+        ['累计收益', pct(m.total_return), reportTitle(r), cls(m.total_return)],
+        ['最大回撤', pct(m.max_drawdown), 'drawdown', cls(-Math.abs(m.max_drawdown || 0))],
+        ['夏普', num(m.sharpe), 'sharpe', 'gold'],
+        ['交割数', num(m.trade_count, 0), `${num(s.symbols, 0)} 标的`, ''],
+      ];
+      const html = rows.map(([k, v, note, c]) => `<div class="panel metric"><div class="label">${k}</div><div class="value ${c}">${v}</div><div class="note">${esc(note)}</div></div>`).join('');
+      const desc = s.description ? `<div class="panel metric"><div class="label">策略描述</div><div class="desc">${esc(s.description)}</div></div>` : '';
+      document.getElementById('topMetrics').innerHTML = html + desc;
+    }
+    function renderMetricGrid(id, metrics) {
+      const rows = [
+        ['累计收益', pct(metrics.total_return), cls(metrics.total_return)],
+        ['年化', pct(metrics.annual_return), cls(metrics.annual_return)],
+        ['最大回撤', pct(metrics.max_drawdown), 'down'],
+        ['胜率', pct(metrics.win_rate), 'gold'],
+        ['夏普', num(metrics.sharpe), 'gold'],
+        ['Profit Factor', num(metrics.profit_factor), 'gold'],
+        ['平均持仓', num(metrics.avg_holding_days), ''],
+        ['交易成本', num(metrics.total_cost), ''],
+      ];
+      document.getElementById(id).innerHTML = rows.map(([k, v, c]) => `<div class="panel metric"><div class="label">${k}</div><div class="value ${c}">${v}</div></div>`).join('');
+    }
+    function renderLeaderboard() {
+      document.getElementById('leaderboardCount').textContent = `${state.reports.length} 战法`;
+      renderTopMetrics();
+      const rows = state.reports.map((r, i) => `<tr class="clickable" onclick="selectReport('${esc(r.run_id)}'); showPage('reports')">
+        <td class="left">${i + 1}</td><td class="left"><div class="strategy-title">${esc(reportTitle(r))}</div><div class="metric-line">
+          <span class="${cls(r.total_return)}">收益 ${pct(r.total_return)}</span><span>年化 ${pct(r.annual_return)}</span><span class="gold">胜率 ${pct(r.win_rate)}</span><span>夏普 ${num(r.sharpe)}</span><span class="down">回撤 ${pct(r.max_drawdown)}</span>
+        </div></td><td>${num(r.avg_position_count)}</td><td>${num(r.avg_holding_days)}</td><td>${num(r.trade_count ?? r.trades, 0)}</td><td>${esc(r.start_date)} - ${esc(r.end_date)}</td><td class="left note-cell">${esc(r.description || '')}</td>
+      </tr>`).join('');
+      document.getElementById('leaderboardTable').innerHTML = `<table><thead><tr><th>#</th><th class="left">战法</th><th>均持仓</th><th>均周期</th><th>交割</th><th>区间</th><th class="left">注解</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function renderReportsTable() {
+      const rows = state.reports.map(r => `<tr class="clickable" onclick="selectReport('${esc(r.run_id)}')">
+        <td class="left"><div class="strategy-title">${esc(reportTitle(r))}</div><div class="metric-line">
+          <span class="${cls(r.total_return)}">收益 ${pct(r.total_return)}</span><span>年化 ${pct(r.annual_return)}</span><span class="gold">胜率 ${pct(r.win_rate)}</span><span>夏普 ${num(r.sharpe)}</span><span class="down">回撤 ${pct(r.max_drawdown)}</span>
+        </div></td><td>${num(r.avg_position_count)}</td><td>${num(r.avg_holding_days)}</td><td>${num(r.trade_count ?? r.trades, 0)}</td><td>${num(r.final_value)}</td><td class="left note-cell">${esc(r.description || '')}</td>
+      </tr>`).join('');
+      document.getElementById('reportsTable').innerHTML = `<table><thead><tr><th class="left">战法</th><th>均持仓</th><th>均周期</th><th>交割</th><th>期末权益</th><th class="left">注解</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function renderReport() {
+      if (!state.currentReport) return;
+      const r = state.currentReport;
+      renderMetricGrid('reportMetrics', r.metrics || {});
+      document.getElementById('reportName').textContent = reportTitle(r);
+      document.getElementById('tradeCount').textContent = `${r.trades?.length || 0} trades`;
+      drawLine('equityCanvas', r.daily_nav || [], 'total_value', varColor('--gold'), {valueFormatter: axisNum});
+      drawLine('drawdownCanvas', r.daily_nav || [], 'drawdown', varColor('--green'), {valueFormatter: pct});
+      renderReportsTable();
+      renderAnnualReturns();
+      renderNextSessionGuide();
+      renderClosedRankTables();
+    }
+
+    function renderAnnualReturns() {
+      const rows = state.currentReport?.annual_returns || [];
+      document.getElementById('annualReturnCount').textContent = `${rows.length} 年`;
+      if (!rows.length) {
+        document.getElementById('annualReturnsTable').innerHTML = '<div class="empty">暂无年度收益</div>';
+        return;
+      }
+      const html = rows.map(r => `<tr>
+        <td class="left">${esc(r.year)}</td><td class="${cls(r.return)}">${pct(r.return)}</td><td class="down">${pct(r.max_drawdown)}</td>
+        <td>${num(r.start_value)}</td><td>${num(r.end_value)}</td><td>${num(r.trading_days, 0)}</td>
+      </tr>`).join('');
+      document.getElementById('annualReturnsTable').innerHTML = `<table><thead><tr><th class="left">年份</th><th>收益</th><th>年内回撤</th><th>年初权益</th><th>年末权益</th><th>交易日</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function renderNextSessionGuide() {
+      const guide = state.currentReport?.next_session_guide || {};
+      const candidates = guide.new_buy_candidates || [];
+      const held = guide.already_held_candidates || [];
+      document.getElementById('nextGuideDate').textContent = guide.signal_date ? `信号日 ${guide.signal_date}` : '';
+      const steps = (guide.steps || []).map(step => `<li>${esc(step)}</li>`).join('') || '<li>暂无操作指南</li>';
+      const guideDate = guide.signal_date || guide.latest_date || '';
+      const candidateRows = candidates.map(row => `<tr class="clickable" onclick="openSymbol('${esc(row.symbol)}', '${esc(guideDate)}')"><td class="left">${esc(row.symbol)}</td><td>${num(row.score, 4)}</td><td>${row.where ? '是' : '否'}</td></tr>`).join('');
+      const heldRows = held.map(row => `<tr class="clickable" onclick="openSymbol('${esc(row.symbol)}', '${esc(guideDate)}')"><td class="left">${esc(row.symbol)}</td><td>${num(row.score, 4)}</td><td>${row.where ? '是' : '否'}</td></tr>`).join('');
+      document.getElementById('nextSessionGuide').innerHTML = `
+        <div class="desc">原始命中 ${num(guide.raw_candidate_count, 0)} 只 · 最终候选 ${num(guide.candidate_count, 0)} 只 · 成交价口径 ${esc(guide.deal_price || '-')} · 仓位 ${esc(guide.sizing || '-')}</div>
+        <ul>${steps}</ul>
+        <h3>新买候选</h3>
+        ${candidateRows ? `<table><thead><tr><th class="left">股票</th><th>分数</th><th>公式命中</th></tr></thead><tbody>${candidateRows}</tbody></table>` : '<div class="empty">无新买候选</div>'}
+        <h3>已持仓候选</h3>
+        ${heldRows ? `<table><thead><tr><th class="left">股票</th><th>分数</th><th>公式命中</th></tr></thead><tbody>${heldRows}</tbody></table>` : '<div class="empty">无已持仓候选</div>'}
+      `;
+    }
+
+    function renderClosedRankTables() {
+      const ranked = state.currentReport?.best_closed_positions || {gains: [], losses: []};
+      renderClosedRankTable('topGainsTable', ranked.gains || [], 'gainCount');
+      renderClosedRankTable('topLossesTable', ranked.losses || [], 'lossCount');
+    }
+    function renderClosedRankTable(id, rows, countId) {
+      document.getElementById(countId).textContent = `${rows.length} 笔`;
+      const html = rows.map(t => `<tr class="clickable" onclick="openSymbol('${esc(t.symbol)}', '', '${esc(t.entry_date)}', '${esc(t.exit_date)}')">
+        <td class="left">${esc(t.symbol)}</td><td class="left">${esc(t.entry_date)} → ${esc(t.exit_date)}</td>
+        <td>${num(t.quantity, 0)}</td><td>${num(t.entry_price, 3)}</td><td>${num(t.exit_price, 3)}</td>
+        <td class="${cls(t.return)}">${pct(t.return)}</td><td class="${cls(t.net_pnl)}">${num(t.net_pnl)}</td>
+      </tr>`).join('');
+      document.getElementById(id).innerHTML = `<table><thead><tr><th class="left">股票</th><th class="left">区间</th><th>数量</th><th>买价</th><th>卖价</th><th>收益率</th><th>盈亏</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+    function renderTrades() {
+      const report = state.currentReport;
+      if (!report) {
+        document.getElementById('tradesTable').innerHTML = '<div class="empty">暂无报告</div>';
+        return;
+      }
+      const filter = document.getElementById('tradeFilter')?.value?.trim().toUpperCase() || '';
+      const limit = Number(document.getElementById('tradeLimit')?.value || 200);
+      let trades = [...(report.trades || [])].filter(t => {
+        const status = t.reject_reason ? 'REJECTED 拒单' : 'FILLED 成交';
+        return !filter
+          || String(t.symbol).includes(filter)
+          || String(t.action).includes(filter)
+          || String(t.reject_reason || '').toUpperCase().includes(filter)
+          || status.includes(filter);
+      });
+      trades = trades.slice(-limit).reverse();
+      const rows = trades.map(t => {
+        const rejected = Boolean(t.reject_reason);
+        const direction = rejected ? '拒单' : (t.action === 'BUY' ? 'B' : 'S');
+        const directionClass = rejected ? 'muted' : (t.action === 'BUY' ? 'up' : 'down');
+        const status = rejected ? `拒单: ${esc(t.reject_reason)}` : '成交';
+        return `<tr class="clickable" onclick="openSymbol('${esc(t.symbol)}', '${esc(t.date)}')">
+          <td class="left">${esc(t.date)}</td><td class="left">${esc(t.symbol)}</td><td class="${directionClass}">${direction}</td>
+          <td>${num(t.price, 3)}</td><td>${num(t.quantity, 0)}</td><td>${num(t.trade_value)}</td><td>${num(t.total_cost)}</td><td class="left ${rejected ? 'muted' : ''}">${status}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('tradesTable').innerHTML = `<table><thead><tr><th class="left">日期</th><th class="left">股票</th><th>方向</th><th>价格</th><th>数量</th><th>成交额</th><th>费用</th><th class="left">状态</th></tr></thead><tbody>${rows}</tbody></table>`;
+      renderHoldings();
+      renderClosedPositions();
+    }
+
+    function renderHoldings() {
+      const rows = state.currentReport?.current_positions || [];
+      document.getElementById('holdingCount').textContent = `${rows.length} 只`;
+      const html = rows.map(p => `<tr class="clickable" onclick="openSymbol('${esc(p.symbol)}', '${esc(p.last_trade_date || p.date)}')">
+        <td class="left">${esc(p.symbol)}</td><td class="left">${esc(p.date)}</td><td>${num(p.quantity, 0)}</td>
+        <td>${num(p.avg_cost, 3)}</td><td>${num(p.current_price, 3)}</td><td>${num(p.market_value)}</td>
+        <td class="${cls(p.unrealized_return)}">${pct(p.unrealized_return)}</td><td class="${cls(p.unrealized_pnl)}">${num(p.unrealized_pnl)}</td><td>${num(p.holding_days, 0)}</td>
+      </tr>`).join('');
+      document.getElementById('holdingsTable').innerHTML = `<table><thead><tr><th class="left">股票</th><th class="left">日期</th><th>数量</th><th>成本</th><th>现价</th><th>市值</th><th>浮盈率</th><th>浮盈额</th><th>持仓天数</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+    function renderClosedPositions() {
+      const filter = document.getElementById('tradeFilter')?.value?.trim().toUpperCase() || '';
+      let rows = state.currentReport?.closed_position_summary || [];
+      if (filter) rows = rows.filter(t => String(t.symbol).includes(filter) || String(t.profit_label).includes(filter));
+      document.getElementById('closedCount').textContent = `${rows.length} 笔`;
+      const html = rows.slice().reverse().map(t => `<tr class="clickable" onclick="openSymbol('${esc(t.symbol)}', '', '${esc(t.entry_date)}', '${esc(t.exit_date)}')">
+        <td class="left">${esc(t.symbol)}</td><td class="left">${esc(t.entry_date)} → ${esc(t.exit_date)}</td><td>${num(t.quantity, 0)}</td>
+        <td>${num(t.entry_price, 3)}</td><td>${num(t.exit_price, 3)}</td><td class="${cls(t.return)}">${pct(t.return)}</td>
+        <td class="${cls(t.net_pnl)}">${num(t.net_pnl)}</td><td class="${cls(t.net_pnl)}">${esc(t.profit_label)}</td><td>${num(t.holding_days, 0)}</td>
+      </tr>`).join('');
+      document.getElementById('closedPositionsTable').innerHTML = `<table><thead><tr><th class="left">股票</th><th class="left">区间</th><th>数量</th><th>买价</th><th>卖价</th><th>收益率</th><th>盈亏额</th><th>状态</th><th>天数</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    async function loadSymbolDetail() {
+      const symbol = document.getElementById('symbolInput').value.trim();
+      const runId = state.currentReportId || document.getElementById('globalReportSelect').value;
+      if (!symbol || !runId) return;
+      setStatus(`加载 ${symbol}`);
+      const detail = await api(`/api/reports/${encodeURIComponent(runId)}/symbols/${encodeURIComponent(symbol)}`);
+      const meta = detail.meta || {};
+      const name = detail.name && detail.name !== detail.symbol ? detail.name : detail.symbol;
+      const industry = meta.industry_name || meta.industry_code || '';
+      document.getElementById('symbolTitle').textContent = [name, detail.symbol, industry, 'B/S 点'].filter(Boolean).join(' · ');
+      document.getElementById('symbolTradeCount').textContent = `${detail.trades.length} trades`;
+      document.getElementById('roundTripCount').textContent = `${detail.round_trips.length} trips`;
+      renderSymbolSummary(detail);
+      initKline(detail.bars, detail.trades, {
+        focusDate: qs.get('focus_date') || '',
+        focusStart: qs.get('focus_start') || '',
+        focusEnd: qs.get('focus_end') || '',
+      });
+      renderSymbolTrades(detail.trades);
+      renderRoundTrips(detail.round_trips);
+      setStatus(`${symbol} · ${detail.bars.length} bars`);
+    }
+    function renderSymbolSummary(detail) {
+      const bars = detail.bars || [];
+      const latest = bars[bars.length - 1] || {};
+      const prev = bars.length > 1 ? bars[bars.length - 2] : null;
+      const change = latest.change != null ? Number(latest.change) : (prev && latest.close ? Number(latest.close) / Number(prev.close) - 1 : null);
+      const buys = (detail.trades || []).filter(t => t.action === 'BUY').length;
+      const sells = (detail.trades || []).filter(t => t.action === 'SELL').length;
+      const meta = detail.meta || {};
+      const tiles = [
+        ['股票名称', detail.name || detail.symbol, 'gold'],
+        ['股票代码', detail.symbol, ''],
+        ['行业', meta.industry_name || meta.industry_code || '-', 'gold'],
+        ['最新日期', latest.date || '-', ''],
+        ['收盘价', num(latest.close, 3), cls(change || 0)],
+        ['涨跌幅', change == null ? '-' : pct(change), cls(change || 0)],
+        ['最高 / 最低', latest.high == null ? '-' : `${num(latest.high, 3)} / ${num(latest.low, 3)}`, ''],
+        ['B / S 次数', `${buys} / ${sells}`, ''],
+      ];
+      document.getElementById('symbolSummary').innerHTML = tiles.map(([k, v, c]) => `<div class="symbol-tile"><div class="label">${k}</div><div class="value ${c}">${esc(v)}</div></div>`).join('');
+    }
+    function renderSymbolTrades(trades) {
+      const rows = trades.map(t => `<tr class="clickable" onclick="focusKlineDate('${esc(t.date)}')"><td class="left">${esc(t.date)}</td><td class="${t.action === 'BUY' ? 'up' : 'down'}">${t.action === 'BUY' ? 'B' : 'S'}</td><td>${num(t.price, 3)}</td><td>${num(t.quantity, 0)}</td><td>${num(t.trade_value)}</td></tr>`).join('');
+      document.getElementById('symbolTradesTable').innerHTML = `<table><thead><tr><th class="left">日期</th><th>方向</th><th>价格</th><th>数量</th><th>成交额</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function renderRoundTrips(trips) {
+      const rows = trips.map(t => `<tr class="clickable" onclick="focusKlineRange('${esc(t.entry_date)}', '${esc(t.exit_date)}')"><td class="left">${esc(t.entry_date)}</td><td class="left">${esc(t.exit_date)}</td><td>${num(t.quantity, 0)}</td><td>${num(t.entry_price, 3)}</td><td>${num(t.exit_price, 3)}</td><td class="${cls(t.return)}">${pct(t.return)}</td></tr>`).join('');
+      document.getElementById('roundTripsTable').innerHTML = `<table><thead><tr><th class="left">买入</th><th class="left">卖出</th><th>数量</th><th>买价</th><th>卖价</th><th>收益</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    async function loadPatternAnalyses() {
+      state.patternAnalyses = await api('/api/pattern-analyses');
+      const select = document.getElementById('patternAnalysisSelect');
+      if (!select) return;
+      select.innerHTML = state.patternAnalyses.map(row => `<option value="${esc(row.analysis_id)}">${esc(row.analysis_id)} · ${num(row.sample_count, 0)} 笔 · ${pct(row.avg_return)}</option>`).join('');
+      const requested = qs.get('analysis_id') || state.currentPatternAnalysisId || state.patternAnalyses[0]?.analysis_id || '';
+      if (requested) await selectPatternAnalysis(requested);
+      else renderPatternAnalysis();
+    }
+
+    async function selectPatternAnalysis(analysisId) {
+      if (!analysisId) return;
+      state.currentPatternAnalysisId = analysisId;
+      const select = document.getElementById('patternAnalysisSelect');
+      if (select) select.value = analysisId;
+      state.currentPatternAnalysis = await api('/api/pattern-analyses/' + encodeURIComponent(analysisId));
+      const clusters = patternClusterRows();
+      state.currentPatternClusterId = clusters[0]?.cluster_id || '';
+      state.currentPatternSamples = [];
+      state.currentPatternSimilar = null;
+      renderPatternAnalysis();
+      if (state.currentPatternClusterId) await loadPatternClusterSamples(state.currentPatternClusterId);
+    }
+
+    async function buildPatternFromCurrentRun() {
+      if (!state.currentReportId) return;
+      const analysisId = `${state.currentReportId}_patterns`;
+      setStatus(`构建形态分析 ${analysisId}`);
+      const result = await api('/api/pattern-analyses', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({runs: [`runs/${state.currentReportId}`], analysis_id: analysisId, pre_n: 40, post_n: 15, n_clusters: 8}),
+      });
+      setStatus(`形态分析完成 · ${result.sample_count} 笔`);
+      await loadPatternAnalyses();
+      await selectPatternAnalysis(result.analysis_id);
+    }
+
+    function patternClusterRows() {
+      const detail = state.currentPatternAnalysis || {};
+      const summaryRows = detail.summary?.cluster_results?.clusters;
+      return Array.isArray(summaryRows) && summaryRows.length ? summaryRows : (detail.clusters || []);
+    }
+
+    function renderPatternAnalysis() {
+      const detail = state.currentPatternAnalysis;
+      if (!detail) {
+        document.getElementById('patternMetrics').innerHTML = '<div class="empty">暂无形态分析</div>';
+        document.getElementById('patternOutcomeLine').textContent = '';
+        document.getElementById('patternClustersTable').innerHTML = '<div class="empty">暂无聚类</div>';
+        document.getElementById('patternModelsTable').innerHTML = '<div class="empty">暂无模型</div>';
+        document.getElementById('patternExitReview').innerHTML = '';
+        document.getElementById('patternFigures').innerHTML = '<div class="empty">暂无图片</div>';
+        document.getElementById('patternSamplesTable').innerHTML = '<div class="empty">暂无样本</div>';
+        document.getElementById('patternSimilarTable').innerHTML = '<div class="empty">暂无相似交易</div>';
+        return;
+      }
+      const summary = detail.summary || {};
+      const management = summary.management_summary || {};
+      const exitReview = summary.exit_review_summary || {};
+      const rows = [
+        ['样本数', num(summary.sample_count, 0), `${esc(summary.date_start || '')} - ${esc(summary.date_end || '')}`, 'gold'],
+        ['平均收益', pct(summary.avg_return), 'closed return', cls(summary.avg_return)],
+        ['8%机会率', pct(exitReview.opportunity_rate_8pct ?? management.opportunity_rate), `MFE ${pct(summary.avg_mfe)}`, 'up'],
+        ['8%后收负', pct(exitReview.ended_negative_after_8pct_opportunity_rate), `峰后回撤 ${pct(management.avg_drawdown_after_peak)}`, 'gold'],
+      ];
+      document.getElementById('patternMetrics').innerHTML = rows.map(([k, v, note, c]) => `<div class="panel metric"><div class="label">${k}</div><div class="value ${c}">${v}</div><div class="note">${note}</div></div>`).join('');
+      document.getElementById('patternOutcomeLine').textContent = `结果 ${formatCounts(summary.outcome_counts)} · 行为 ${formatCounts(summary.behavior_counts)} · 早确 ${pct(management.early_confirm_rate)} · 早弱 ${pct(management.early_fail_rate)} · MAE ${pct(summary.avg_mae)}`;
+      renderPatternExitReview();
+      renderPatternClusters();
+      renderPatternModels();
+      renderPatternFigures();
+      renderPatternSamples();
+      renderPatternSimilar();
+    }
+
+    function formatCounts(counts) {
+      return Object.entries(counts || {}).map(([k, v]) => `${k}:${v}`).join(' / ') || '-';
+    }
+
+    function renderPatternExitReview() {
+      const review = state.currentPatternAnalysis?.summary?.exit_review_summary || {};
+      const bins = review.bins || [];
+      if (!bins.length) {
+        document.getElementById('patternExitReview').innerHTML = '';
+        return;
+      }
+      const overview = [
+        `4%机会 ${pct(review.opportunity_rate_4pct)}`,
+        `8%机会 ${pct(review.opportunity_rate_8pct)}`,
+        `12%机会 ${pct(review.opportunity_rate_12pct)}`,
+        `18%机会 ${pct(review.opportunity_rate_18pct)}`,
+        `8%硬亏 ${pct(review.hard_loss_rate_8pct)}`,
+        `8%后收负 ${pct(review.ended_negative_after_8pct_opportunity_rate)}`,
+      ].join(' · ');
+      const html = bins.map(row => `<tr>
+        <td class="left">${esc(patternExitBucketLabel(row.bucket))}</td><td>${num(row.sample_count, 0)}</td>
+        <td class="${cls(row.avg_return)}">${pct(row.avg_return)}</td><td>${pct(row.success_rate)}</td><td>${pct(row.efficient_capture_rate)}</td>
+        <td class="${cls(-Number(row.ended_negative_rate || 0))}">${pct(row.ended_negative_rate)}</td><td class="down">${pct(row.avg_drawdown_after_peak)}</td>
+      </tr>`).join('');
+      document.getElementById('patternExitReview').innerHTML = `<div class="desc">${esc(overview)}</div><table><thead><tr><th class="left">卖点复盘</th><th>样本</th><th>均收益</th><th>成功</th><th>捕捉</th><th>收负</th><th>峰后回撤</th></tr></thead><tbody>${html}</tbody></table>`;
+      const whatIf = state.currentPatternAnalysis?.summary?.exit_rule_what_if || {};
+      const ruleRows = whatIf.rules || [];
+      if (ruleRows.length) {
+        const ruleHtml = ruleRows.map(row => `<tr>
+          <td class="left"><div class="strategy-title">${esc(row.description || row.rule_id)}</div><div class="metric-line"><span>${esc(row.rule_id || '')}</span></div></td>
+          <td>${num(row.sample_count, 0)}</td><td class="${cls(row.avg_return)}">${pct(row.avg_return)}</td><td class="${cls(row.avg_delta_return)}">${pct(row.avg_delta_return)}</td>
+          <td>${pct(row.improved_rate)}</td><td>${pct(row.success_rate)}</td><td class="${cls(-Number(row.negative_rate || 0))}">${pct(row.negative_rate)}</td><td>${num(row.avg_holding_days)}</td>
+        </tr>`).join('');
+        document.getElementById('patternExitReview').innerHTML += `<div class="desc">${esc(whatIf.note || '单笔路径试算，不等于组合回测。')}</div><table><thead><tr><th class="left">卖点规则试算</th><th>样本</th><th>均收益</th><th>均改善</th><th>改善率</th><th>成功</th><th>收负</th><th>均持仓</th></tr></thead><tbody>${ruleHtml}</tbody></table>`;
+      }
+    }
+
+    function patternExitBucketLabel(bucket) {
+      const labels = {
+        no_4pct_opportunity: '未给4%机会',
+        mfe_4_8pct: 'MFE 4%-8%',
+        mfe_8_12pct: 'MFE 8%-12%',
+        mfe_12_18pct: 'MFE 12%-18%',
+        mfe_18pct_plus: 'MFE 18%+',
+      };
+      return labels[bucket] || bucket || '-';
+    }
+
+    function renderPatternClusters() {
+      const clusters = patternClusterRows();
+      document.getElementById('patternClusterCount').textContent = `${clusters.length} 类`;
+      if (!clusters.length) {
+        document.getElementById('patternClustersTable').innerHTML = '<div class="empty">暂无聚类</div>';
+        return;
+      }
+      const html = clusters.map(row => {
+        const selected = row.cluster_id === state.currentPatternClusterId ? 'gold' : '';
+        const features = (row.top_features || []).slice(0, 3).map(f => `${f.feature}:${num(f.mean, 3)}`).join(' · ');
+        return `<tr class="clickable" onclick="loadPatternClusterSamples('${esc(row.cluster_id)}')">
+          <td class="left ${selected}"><div class="strategy-title">${esc(row.cluster_id)}</div><div class="metric-line"><span>${esc(row.description || '')}</span><span>${esc(features)}</span></div></td>
+          <td>${num(row.sample_count, 0)}</td><td class="gold">${pct(row.success_rate)}</td><td class="${cls(row.avg_return)}">${pct(row.avg_return)}</td><td>${pct(row.opportunity_rate)}</td><td>${pct(row.early_confirm_rate)}</td><td class="down">${pct(row.fade_after_peak_rate)}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('patternClustersTable').innerHTML = `<table><thead><tr><th class="left">聚类</th><th>样本</th><th>成功率</th><th>均收益</th><th>机会</th><th>早确</th><th>回落</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function renderPatternModels() {
+      const allResults = state.currentPatternAnalysis?.summary?.model_results || {};
+      const targets = allResults.targets || {};
+      const comparison = patternTargetComparison(allResults);
+      const targetKey = targets[state.currentPatternTarget] ? state.currentPatternTarget : (targets.success ? 'success' : '');
+      const targetSelect = document.getElementById('patternTargetSelect');
+      if (targetSelect && targetKey) targetSelect.value = targetKey;
+      const modelResults = targetKey ? targets[targetKey] : allResults;
+      const models = modelResults.models || {};
+      const baseline = modelResults.majority_baseline || {};
+      const rows = Object.entries(models);
+      const targetLabel = patternTargetLabel(targetKey || modelResults.target || 'success');
+      document.getElementById('patternModelCount').textContent = baseline.accuracy == null ? `${rows.length} 模型` : `${targetLabel} · 基线 ${pct(baseline.accuracy)}`;
+      if (!rows.length && baseline.accuracy == null) {
+        document.getElementById('patternModelsTable').innerHTML = '<div class="empty">暂无模型结果</div>';
+        return;
+      }
+      const html = rows.map(([name, result]) => {
+        const features = (result.top_features || []).slice(0, 5).map(f => f.feature).join(' · ');
+        return `<tr><td class="left"><div class="strategy-title">${esc(name)}</div><div class="metric-line"><span>${esc(features)}</span></div></td><td>${result.ok ? 'OK' : '-'}</td><td>${num(result.auc, 4)}</td><td>${pct(result.accuracy)}</td><td class="${cls(result.accuracy_vs_baseline)}">${pct(result.accuracy_vs_baseline)}</td><td>${pct(result.precision)}</td><td>${pct(result.recall)}</td></tr>`;
+      }).join('');
+      const baselineHtml = baseline.accuracy == null ? '' : `<div class="desc">Baseline ${esc(baseline.label || '-')} · Acc ${pct(baseline.accuracy)} · Precision ${pct(baseline.precision)} · Recall ${pct(baseline.recall)} · 正例率 ${pct(modelResults.positive_rate)}</div>`;
+      const interpretationHtml = patternModelInterpretation();
+      const comparisonHtml = comparison.length ? `<table><thead><tr><th class="left">目标</th><th>正例率</th><th>基线</th><th>基线Acc</th><th>最佳AUC</th><th>基线差</th></tr></thead><tbody>${comparison.map(row => `<tr class="${row.target === targetKey ? 'selected-row' : ''}"><td class="left"><button onclick="setPatternTarget('${esc(row.target)}')">${esc(patternTargetLabel(row.target))}</button></td><td>${pct(row.positive_rate)}</td><td>${esc(row.baseline_label || '-')}</td><td>${pct(row.baseline_accuracy)}</td><td><div>${esc(row.best_auc_model || '-')}</div><div class="metric-line"><span>${num(row.best_auc, 4)}</span></div></td><td class="${cls(row.best_accuracy_vs_baseline)}"><div>${esc(row.best_accuracy_delta_model || '-')}</div><div>${pct(row.best_accuracy_vs_baseline)}</div></td></tr>`).join('')}</tbody></table>` : '';
+      document.getElementById('patternModelsTable').innerHTML = `${interpretationHtml}${comparisonHtml}${baselineHtml}<table><thead><tr><th class="left">模型</th><th>状态</th><th>AUC</th><th>Acc</th><th>基线差</th><th>Precision</th><th>Recall</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function setPatternTarget(target) {
+      state.currentPatternTarget = target || 'success';
+      renderPatternModels();
+    }
+
+    function patternTargetLabel(target) {
+      const labels = {
+        success: '最终成功',
+        opportunity: '给过机会',
+        fade_after_peak: '峰后回落',
+        efficient_capture: '有效捕捉',
+      };
+      return labels[target] || target;
+    }
+
+    function patternModelInterpretation() {
+      const rows = state.currentPatternAnalysis?.summary?.model_interpretation || [];
+      if (!Array.isArray(rows) || !rows.length) return '';
+      const text = rows.map(row => `${patternTargetLabel(row.target)}：${patternSignalText(row)}`).join(' · ');
+      return `<div class="desc">${esc(text)}</div>`;
+    }
+
+    function patternSignalText(row) {
+      const strength = {
+        usable: '可用',
+        weak_but_present: '有弱信号',
+        weak: '偏弱',
+        not_learned: '暂不可学',
+        unknown: '未知',
+      }[row.signal_strength] || row.signal_strength || '-';
+      const implication = {
+        buy_filter_not_supported: '不支持作为买入过滤',
+        buy_filter_candidate: '可继续验证买入过滤',
+        trade_management_candidate: '更适合做持仓/卖出研究',
+        opportunity_signal_weak: '机会信号偏弱',
+        exit_rules_more_important_than_pre_entry_filter: '重点优化卖出和回撤控制',
+        fade_filter_candidate: '可继续验证回落过滤',
+        capture_needs_exit_logic: '需要卖出逻辑配合',
+        capture_filter_candidate: '可继续验证捕捉过滤',
+      }[row.implication] || row.implication || '';
+      return `${strength}${implication ? '，' + implication : ''}`;
+    }
+
+    function patternTargetComparison(modelResults) {
+      const existing = state.currentPatternAnalysis?.summary?.target_comparison;
+      if (Array.isArray(existing) && existing.length) return existing;
+      const targets = modelResults?.targets || {};
+      return Object.entries(targets).map(([target, result]) => {
+        const models = result.models || {};
+        let bestAuc = null;
+        let bestAucModel = '';
+        let bestDelta = null;
+        let bestDeltaModel = '';
+        Object.entries(models).forEach(([name, metrics]) => {
+          if (!metrics || !metrics.ok) return;
+          if (metrics.auc != null && (bestAuc == null || Number(metrics.auc) > bestAuc)) {
+            bestAuc = Number(metrics.auc);
+            bestAucModel = name;
+          }
+          if (metrics.accuracy_vs_baseline != null && (bestDelta == null || Number(metrics.accuracy_vs_baseline) > bestDelta)) {
+            bestDelta = Number(metrics.accuracy_vs_baseline);
+            bestDeltaModel = name;
+          }
+        });
+        const baseline = result.majority_baseline || {};
+        return {
+          target,
+          positive_rate: result.positive_rate,
+          baseline_label: baseline.label,
+          baseline_accuracy: baseline.accuracy,
+          best_auc_model: bestAucModel,
+          best_auc: bestAuc,
+          best_accuracy_delta_model: bestDeltaModel,
+          best_accuracy_vs_baseline: bestDelta,
+        };
+      });
+    }
+
+    function renderPatternFigures() {
+      const clusterId = state.currentPatternClusterId;
+      document.getElementById('patternFigureCluster').textContent = clusterId || '';
+      const figures = state.currentPatternAnalysis?.summary?.figure_results?.[clusterId] || {};
+      const items = [
+        ['代表样本', figures.representatives],
+        ['失败反例', figures.counter_examples],
+      ].filter(([, path]) => path);
+      if (!items.length) {
+        document.getElementById('patternFigures').innerHTML = '<div class="empty">暂无图片</div>';
+        return;
+      }
+      document.getElementById('patternFigures').innerHTML = `<div class="pattern-figures">${items.map(([label, path]) => `<div class="pattern-figure"><div class="label">${esc(label)}</div><img src="${patternFigureUrl(path)}" alt="${esc(label)}" /></div>`).join('')}</div>`;
+    }
+
+    function patternFigureUrl(path) {
+      const analysisId = encodeURIComponent(state.currentPatternAnalysisId || '');
+      const encodedPath = String(path || '').split('/').map(encodeURIComponent).join('/');
+      return `/api/pattern-analyses/${analysisId}/figures/${encodedPath}`;
+    }
+
+    async function loadPatternClusterSamples(clusterId) {
+      if (!state.currentPatternAnalysisId || !clusterId) return;
+      state.currentPatternClusterId = clusterId;
+      const data = await api(`/api/pattern-analyses/${encodeURIComponent(state.currentPatternAnalysisId)}/clusters/${encodeURIComponent(clusterId)}/samples?limit=200`);
+      state.currentPatternSamples = data.samples || [];
+      state.currentPatternSimilar = null;
+      renderPatternClusters();
+      renderPatternFigures();
+      renderPatternSamples();
+      renderPatternSimilar();
+    }
+
+    function renderPatternSamples() {
+      const rows = state.currentPatternSamples || [];
+      document.getElementById('patternSampleCount').textContent = `${rows.length} 笔`;
+      if (!rows.length) {
+        document.getElementById('patternSamplesTable').innerHTML = '<div class="empty">暂无样本</div>';
+        return;
+      }
+      const html = rows.map(row => `<tr class="clickable" onclick="loadSimilarPatternSamples('${esc(row.sample_id)}')">
+        <td class="left"><div class="strategy-title">${esc(row.symbol)}</div><div class="metric-line"><span>${esc(row.entry_date)} → ${esc(row.exit_date)}</span><span>${esc(row.outcome_label || '')}</span><span>${esc(row.behavior_label || '')}</span><span>${patternFlags(row)}</span></div></td>
+        <td class="${cls(row.return)}">${pct(row.return)}</td><td>${pct(row.max_favorable_excursion)}</td><td class="down">${pct(row.max_adverse_excursion)}</td><td>${pct(row.first_5d_return)}</td><td class="down">${pct(row.drawdown_after_peak)}</td><td><button onclick="event.stopPropagation(); openPatternSymbol('${esc(row.sample_id)}', '${esc(row.symbol)}', '${esc(row.entry_date)}', '${esc(row.exit_date)}')">K线</button></td>
+      </tr>`).join('');
+      document.getElementById('patternSamplesTable').innerHTML = `<table><thead><tr><th class="left">样本</th><th>收益</th><th>MFE</th><th>MAE</th><th>5日</th><th>峰后回撤</th><th>图</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    async function loadSimilarPatternSamples(sampleId) {
+      if (!state.currentPatternAnalysisId || !sampleId) return;
+      state.currentPatternSimilar = await api(`/api/pattern-analyses/${encodeURIComponent(state.currentPatternAnalysisId)}/similar?sample_id=${encodeURIComponent(sampleId)}&top_k=20`);
+      renderPatternSimilar();
+    }
+
+    function renderPatternSimilar() {
+      const data = state.currentPatternSimilar;
+      document.getElementById('patternSimilarTarget').textContent = data?.target?.symbol || '';
+      if (!data || !data.matches?.length) {
+        document.getElementById('patternSimilarTable').innerHTML = '<div class="empty">点击左侧样本查看相似交易</div>';
+        return;
+      }
+      const html = data.matches.map(row => `<tr>
+        <td class="left"><div class="strategy-title">${esc(row.symbol)}</div><div class="metric-line"><span>${esc(row.entry_date)} → ${esc(row.exit_date)}</span><span>${esc(row.cluster_id || '')}</span><span>${esc(row.outcome_label || '')}</span><span>${patternFlags(row)}</span></div></td>
+        <td>${num(row.distance, 3)}</td><td class="${cls(row.return)}">${pct(row.return)}</td><td>${pct(row.max_favorable_excursion)}</td><td class="down">${pct(row.max_adverse_excursion)}</td><td>${pct(row.first_5d_return)}</td><td class="down">${pct(row.drawdown_after_peak)}</td><td><button onclick="openPatternSymbol('${esc(row.sample_id)}', '${esc(row.symbol)}', '${esc(row.entry_date)}', '${esc(row.exit_date)}')">K线</button></td>
+      </tr>`).join('');
+      document.getElementById('patternSimilarTable').innerHTML = `<table><thead><tr><th class="left">相似样本</th><th>距离</th><th>收益</th><th>MFE</th><th>MAE</th><th>5日</th><th>峰后回撤</th><th>图</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function patternFlags(row) {
+      const flags = [];
+      if (row.early_confirmed) flags.push('早确');
+      if (row.early_failed) flags.push('早弱');
+      if (row.had_opportunity) flags.push('机会');
+      if (row.faded_after_peak) flags.push('回落');
+      if (row.efficient_capture) flags.push('捕捉');
+      return flags.join(' / ') || '-';
+    }
+
+    function openPatternSymbol(sampleId, symbol, entryDate, exitDate) {
+      const runId = String(sampleId || '').split(':')[0] || state.currentReportId;
+      const params = new URLSearchParams({page: 'symbol', run_id: runId, symbol});
+      if (entryDate) params.set('focus_start', entryDate);
+      if (exitDate) params.set('focus_end', exitDate);
+      window.open(`/?${params.toString()}`, '_blank');
+    }
+
+    async function loadDataStatus() {
+      const data = await api('/api/data/status');
+      document.getElementById('dataCards').innerHTML = [
+        ['路径', data.provider_uri],
+        ['交易日', num(data.calendar_days, 0)],
+        ['股票数', num(data.instrument_count, 0)],
+        ['Feature 文件', num(data.feature_file_count, 0)],
+        ['区间', `${data.calendar_start} - ${data.calendar_end}`],
+      ].map(([k, v]) => `<div class="metric"><div class="label">${k}</div><div class="value" style="font-size:18px">${esc(v)}</div></div>`).join('');
+    }
+    async function healthCheck() {
+      const data = await api('/api/data/health-check', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider_uri: 'data/qlib_data_fixed'})});
+      document.getElementById('healthOutput').textContent = JSON.stringify(data, null, 2);
+    }
+    async function dataUpdatePlan() {
+      const data = await api('/api/data/update-plan', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider_uri: 'data/qlib_data_fixed'})});
+      document.getElementById('updatePlan').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function varColor(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+    function drawLine(id, rows, key, color, options = {}) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const values = rows.map(r => Number(r[key])).filter(v => Number.isFinite(v));
+      if (!values.length) return;
+      const pad = {left: 72, right: 18, top: 20, bottom: 42};
+      const w = canvas.width, h = canvas.height;
+      const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+      const xOf = i => pad.left + i / Math.max(values.length - 1, 1) * (w - pad.left - pad.right);
+      const yOf = v => h - pad.bottom - (v - min) / span * (h - pad.top - pad.bottom);
+      drawGrid(ctx, w, h, pad);
+      drawYAxis(ctx, min, max, yOf, pad, options.valueFormatter || axisNum);
+      drawXAxis(ctx, rows, xOf, h, pad);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      values.forEach((v, i) => {
+        const x = xOf(i);
+        const y = yOf(v);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    function drawGrid(ctx, w, h, pad) {
+      ctx.strokeStyle = 'rgba(91, 104, 74, .32)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + i * (h - pad.top - pad.bottom) / 4;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+      }
+      for (let i = 0; i <= 6; i++) {
+        const x = pad.left + i * (w - pad.left - pad.right) / 6;
+        ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, h - pad.bottom); ctx.stroke();
+      }
+    }
+    function drawYAxis(ctx, min, max, yOf, pad, formatter) {
+      ctx.fillStyle = varColor('--muted');
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let i = 0; i <= 4; i++) {
+        const value = max - i * (max - min) / 4;
+        ctx.fillText(formatter(value), pad.left - 10, yOf(value));
+      }
+    }
+    function drawXAxis(ctx, rows, xOf, h, pad) {
+      if (!rows.length) return;
+      ctx.fillStyle = varColor('--muted');
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const ticks = uniqueTickIndexes(rows.length, 5);
+      ticks.forEach(i => {
+        const date = rows[i]?.date || '';
+        ctx.fillText(String(date).slice(2), xOf(i), h - pad.bottom + 14);
+      });
+    }
+    function uniqueTickIndexes(length, count) {
+      if (length <= 0) return [];
+      const set = new Set();
+      for (let i = 0; i < count; i++) set.add(Math.round(i * (length - 1) / Math.max(count - 1, 1)));
+      return [...set].sort((a, b) => a - b);
+    }
+    function initKline(bars, trades, focus = {}) {
+      state.kline.bars = bars || [];
+      state.kline.trades = trades || [];
+      const range = initialKlineRange(state.kline.bars, state.kline.trades, focus);
+      state.kline.viewStart = range.start;
+      state.kline.viewEnd = range.end;
+      state.kline.focusDate = focus.focusDate || '';
+      bindKlineEvents();
+      drawKline('klineCanvas');
+    }
+    function initialKlineRange(bars, trades, focus) {
+      const total = bars.length;
+      if (!total) return {start: 0, end: 0};
+      const byDate = new Map(bars.map((b, i) => [b.date, i]));
+      const tradeIndexes = (trades || []).map(t => byDate.get(t.date)).filter(i => i != null);
+      let anchor = total - 1;
+      let start = Math.max(0, total - 160);
+      let end = total - 1;
+      const focusStart = byDate.get(focus.focusStart);
+      const focusEnd = byDate.get(focus.focusEnd);
+      const focusDate = byDate.get(focus.focusDate);
+      if (focusStart != null || focusEnd != null) {
+        const a = focusStart ?? focusEnd;
+        const b = focusEnd ?? focusStart;
+        start = Math.max(0, Math.min(a, b) - 30);
+        end = Math.min(total - 1, Math.max(a, b) + 30);
+      } else if (focusDate != null) {
+        anchor = focusDate;
+        start = Math.max(0, anchor - 80);
+        end = Math.min(total - 1, anchor + 80);
+      } else if (tradeIndexes.length) {
+        start = Math.max(0, Math.min(...tradeIndexes) - 30);
+        end = Math.min(total - 1, Math.max(...tradeIndexes) + 30);
+      }
+      if (end - start < 35) {
+        const mid = Math.round((start + end) / 2);
+        start = Math.max(0, mid - 45);
+        end = Math.min(total - 1, mid + 45);
+      }
+      return {start, end};
+    }
+    function clampKlineWindow(start, end) {
+      const total = state.kline.bars.length;
+      if (!total) return {start: 0, end: 0};
+      const minWindow = Math.min(20, total);
+      let span = Math.max(minWindow - 1, Math.round(end - start));
+      span = Math.min(span, total - 1);
+      start = Math.round(start);
+      end = start + span;
+      if (start < 0) { start = 0; end = span; }
+      if (end > total - 1) { end = total - 1; start = Math.max(0, end - span); }
+      return {start, end};
+    }
+    function focusKlineDate(date) {
+      const i = state.kline.bars.findIndex(b => b.date === date);
+      if (i < 0) return;
+      const range = clampKlineWindow(i - 80, i + 80);
+      state.kline.viewStart = range.start;
+      state.kline.viewEnd = range.end;
+      state.kline.focusDate = date;
+      drawKline('klineCanvas');
+    }
+    function focusKlineRange(startDate, endDate) {
+      const a = state.kline.bars.findIndex(b => b.date === startDate);
+      const b = state.kline.bars.findIndex(row => row.date === endDate);
+      if (a < 0 && b < 0) return;
+      const left = Math.max(0, Math.min(a < 0 ? b : a, b < 0 ? a : b) - 30);
+      const right = Math.min(state.kline.bars.length - 1, Math.max(a, b) + 30);
+      const range = clampKlineWindow(left, right);
+      state.kline.viewStart = range.start;
+      state.kline.viewEnd = range.end;
+      state.kline.focusDate = startDate || endDate || '';
+      drawKline('klineCanvas');
+    }
+    function bindKlineEvents() {
+      const canvas = document.getElementById('klineCanvas');
+      if (canvas.dataset.bound === '1') return;
+      canvas.dataset.bound = '1';
+      canvas.addEventListener('wheel', event => {
+        event.preventDefault();
+        const bars = state.kline.bars;
+        if (!bars.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(rect.width, 1)));
+        const span = state.kline.viewEnd - state.kline.viewStart + 1;
+        const nextSpan = Math.round(span * (event.deltaY > 0 ? 1.18 : 0.84));
+        const center = state.kline.viewStart + ratio * (span - 1);
+        const nextStart = center - ratio * (nextSpan - 1);
+        const range = clampKlineWindow(nextStart, nextStart + nextSpan - 1);
+        state.kline.viewStart = range.start;
+        state.kline.viewEnd = range.end;
+        drawKline('klineCanvas');
+      }, {passive: false});
+      canvas.addEventListener('mousedown', event => {
+        state.kline.dragging = true;
+        state.kline.dragX = event.clientX;
+        state.kline.dragStart = state.kline.viewStart;
+        state.kline.dragEnd = state.kline.viewEnd;
+        canvas.classList.add('dragging');
+      });
+      window.addEventListener('mousemove', event => {
+        if (!state.kline.dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        const span = state.kline.dragEnd - state.kline.dragStart + 1;
+        const dx = event.clientX - state.kline.dragX;
+        const shift = Math.round(-dx / Math.max(rect.width, 1) * span);
+        const range = clampKlineWindow(state.kline.dragStart + shift, state.kline.dragEnd + shift);
+        state.kline.viewStart = range.start;
+        state.kline.viewEnd = range.end;
+        drawKline('klineCanvas');
+      });
+      window.addEventListener('mouseup', () => {
+        state.kline.dragging = false;
+        canvas.classList.remove('dragging');
+      });
+    }
+    function drawKline(id) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const bars = state.kline.bars || [];
+      const trades = state.kline.trades || [];
+      if (!bars.length) return;
+      const range = clampKlineWindow(state.kline.viewStart, state.kline.viewEnd);
+      state.kline.viewStart = range.start;
+      state.kline.viewEnd = range.end;
+      const view = bars.slice(range.start, range.end + 1);
+      const pad = {left: 72, right: 18, top: 24, bottom: 54};
+      const w = canvas.width, h = canvas.height;
+      const priceBottom = h - 168;
+      const volumeTop = h - 132;
+      const volumeBottom = h - pad.bottom;
+      const max = Math.max(...view.map(b => Number(b.high || b.close)));
+      const min = Math.min(...view.map(b => Number(b.low || b.close)));
+      const span = max - min || 1;
+      const xOf = i => pad.left + i / Math.max(view.length - 1, 1) * (w - pad.left - pad.right);
+      const yOf = price => priceBottom - (Number(price) - min) / span * (priceBottom - pad.top);
+      drawGrid(ctx, w, priceBottom, {...pad, bottom: 0});
+      drawYAxis(ctx, min, max, yOf, pad, axisNum);
+      drawXAxis(ctx, view, xOf, h, pad);
+      ctx.fillStyle = varColor('--muted');
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`成交量`, pad.left, volumeTop - 18);
+      const latest = view[view.length - 1];
+      if (latest?.close != null) {
+        const y = yOf(latest.close);
+        ctx.strokeStyle = 'rgba(216, 180, 95, .55)';
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = varColor('--gold');
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(`最新 ${num(latest.close, 3)}`, w - pad.right - 6, y - 4);
+      }
+      const bodyW = Math.max(3, (w - pad.left - pad.right) / view.length * .58);
+      const maxVolume = Math.max(...view.map(b => Number(b.volume || 0)), 1);
+      view.forEach((b, i) => {
+        const x = xOf(i), open = yOf(b.open), close = yOf(b.close), high = yOf(b.high), low = yOf(b.low);
+        const up = Number(b.close) >= Number(b.open);
+        ctx.strokeStyle = up ? varColor('--red') : varColor('--green');
+        ctx.fillStyle = up ? 'rgba(240, 100, 86, .34)' : 'rgba(73, 209, 124, .30)';
+        ctx.beginPath(); ctx.moveTo(x, high); ctx.lineTo(x, low); ctx.stroke();
+        ctx.fillRect(x - bodyW / 2, Math.min(open, close), bodyW, Math.max(2, Math.abs(close - open)));
+        const volumeH = Number(b.volume || 0) / maxVolume * (volumeBottom - volumeTop);
+        ctx.fillStyle = up ? 'rgba(240, 100, 86, .22)' : 'rgba(73, 209, 124, .20)';
+        ctx.fillRect(x - bodyW / 2, volumeBottom - volumeH, bodyW, Math.max(1, volumeH));
+      });
+      const byDate = new Map(view.map((b, i) => [b.date, i]));
+      trades.forEach(t => {
+        if (!byDate.has(t.date)) return;
+        const i = byDate.get(t.date);
+        const x = xOf(i), y = yOf(t.price);
+        const isBuy = t.action === 'BUY';
+        ctx.fillStyle = isBuy ? varColor('--red') : varColor('--green');
+        ctx.beginPath();
+        if (isBuy) {
+          ctx.moveTo(x, y - 13); ctx.lineTo(x - 8, y + 3); ctx.lineTo(x + 8, y + 3);
+        } else {
+          ctx.moveTo(x, y + 13); ctx.lineTo(x - 8, y - 3); ctx.lineTo(x + 8, y - 3);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#f3f0df';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(isBuy ? 'B' : 'S', x + 10, y + (isBuy ? 1 : -7));
+      });
+      ctx.fillStyle = varColor('--muted');
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.font = '12px sans-serif';
+      ctx.fillText(`${view[0]?.date || ''} - ${view[view.length - 1]?.date || ''} · ${view.length} 日`, w - pad.right, h - 8);
+    }
+
+    refreshAll();
+  </script>
+</body>
+</html>

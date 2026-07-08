@@ -1,0 +1,105 @@
+name: stocktradebyz_brick_exact_core_2020_2026_mainboard_stockonly_strict
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 720
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  brick: BrickChart(high, low, close, 8, 3, 12, 12, 8, 92, 114, 1, 1, 1)
+  brick_prev: Ref(brick, 1)
+  brick_growth: brick / (Abs(brick_prev) + 1e-10)
+  prior_green_bars: PriorConsecutive(brick < 0)
+
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  ma14: Mean(close, 14)
+  ma28: Mean(close, 28)
+  ma57: Mean(close, 57)
+  ma114: Mean(close, 114)
+  zxdkx: (ma14 + ma28 + ma57 + ma114) / 4
+  wma25_proxy: Mean(close, 25)
+  wma50_proxy: Mean(close, 50)
+  wma100_proxy: Mean(close, 100)
+
+  ret1: close / Ref(close, 1) - 1
+  ret10: close / Ref(close, 10) - 1
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  score_brick: brick_growth + liquidity_rank * 0.05 + ret1 * 0.5
+
+signals:
+  brick_pattern: (ret1 < 0.20) and (brick > 0) and (brick_prev < 0) and (brick_growth >= 0.5) and (prior_green_bars >= 1)
+  zx_filter: (close < zxdq * 1.47) and (zxdq > zxdkx)
+  weekly_bull_proxy: (wma25_proxy > wma50_proxy) and (wma50_proxy > wma100_proxy)
+  buy_signal: brick_pattern and zx_filter and weekly_bull_proxy and (liquidity_rank > 0.20)
+  sell_signal: (close < ma28) or (ret10 < -0.10)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_brick
+  sort: score_desc
+  topk: 40
+  lag: 1
+  wrap_first_signal: false
+  reason: stocktradebyz_brick_exact_core_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.28
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.09
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 20
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

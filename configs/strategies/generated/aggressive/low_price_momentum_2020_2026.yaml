@@ -1,0 +1,96 @@
+name: aggressive_low_price_momentum_2020_2026
+description: ""
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: 2020-01-02
+  end: 2026-05-31
+  look_back_days: 260
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma5: Mean(close, 5)
+  ma10: Mean(close, 10)
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ret5: close / Ref(close, 5) - 1
+  ret20: close / Ref(close, 20) - 1
+  ret60: close / Ref(close, 60) - 1
+  high20_prev: Max(Ref(high, 1), 20)
+  vol_ma20: Mean(volume, 20)
+  vol_ratio: volume / (vol_ma20 + 1e-10)
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  rank_ret20: CSPctRank(ret20)
+  score_aggressive: ret20 + ret60 * 0.5 + vol_ratio * 0.03 + (20 - close) * 0.005
+
+signals:
+  buy_signal: (close > 2) and (close < 20) and (close > high20_prev) and (ma5 > ma10) and (ma10 > ma20) and (ret20 > 0.12) and (ret60 > 0) and (rank_ret20 > 0.98) and (vol_ratio > 1.20) and (liquidity_rank > 0.05) and (liquidity_rank < 0.95)
+  sell_signal: (close < ma10) or (ret5 < -0.12)
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score_aggressive
+  sort: score_desc
+  topk: 20
+  lag: 1
+  wrap_first_signal: false
+  reason: aggressive_low_price_momentum_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 5
+  cash_use_ratio: 0.99
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: signal_sell
+      when: sell_signal
+      action: sell_all
+    - name: take_profit
+      when: pnl_pct > 0.80
+      action: sell_all
+    - name: stop_loss
+      when: pnl_pct < -0.15
+      action: sell_all
+    - name: time_stop
+      when: holding_days > 45
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: false
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: false
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false
+

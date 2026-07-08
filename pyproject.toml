@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "quantx"
+version = "0.1.0"
+description = "A股量化研究与回测系统"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "baostock>=0.9.2",
+    "duckdb>=0.9",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "fastapi>=0.100",
+    "uvicorn>=0.30",
+    "matplotlib>=3.5",
+    "pydantic-settings>=2.0",
+    "redis>=4.0",
+    "redis-lock>=4.0",
+    "loguru>=0.7",
+    "fire>=0.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "httpx>=0.24",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+quantx = "quantx.tools.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["quantx*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "real_data: tests that require real market data",
+    "slow: slow running tests",
+]

@@ -1,0 +1,127 @@
+name: weak_to_strong_score_pool_shape_pos6_topk6_2016_2026_mainboard
+title: 弱转强形态轻扩容
+description: 弱转强形态骨架轻扩容版：保留原策略的短 RSV 上轨后下洗再重新站上形态，只轻度放宽长 RSV 连续强势要求，并用流动性、RSV 强度、中线位置和短期动量排序，目标是在不破坏形态质量的前提下增加交易覆盖。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2016-01-04
+  end: latest
+  look_back_days: 320
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+factors:
+  ma3: Mean(close, 3)
+  ma6: Mean(close, 6)
+  ma12: Mean(close, 12)
+  ma24: Mean(close, 24)
+  bbi: (ma3 + ma6 + ma12 + ma24) / 4
+  bbi_trend_ok: BBIUptrend(bbi, 2, 120, 0.20)
+  rsv_short: (close - Min(low, 5)) / (Max(close, 5) - Min(low, 5) + 1e-10) * 100
+  rsv_long: (close - Min(low, 21)) / (Max(close, 21) - Min(low, 21) + 1e-10) * 100
+  long_ok: (rsv_long >= 73) and (Ref(rsv_long, 1) >= 73) and (Ref(rsv_long, 2) >= 73) and (Ref(rsv_long, 3) >= 73)
+  short_upper_0: rsv_short >= 75
+  short_upper_1: Ref(rsv_short, 1) >= 75
+  short_upper_2: Ref(rsv_short, 2) >= 75
+  short_upper_3: Ref(rsv_short, 3) >= 75
+  short_upper_4: Ref(rsv_short, 4) >= 75
+  short_lower_0: rsv_short < 25
+  short_lower_1: Ref(rsv_short, 1) < 25
+  short_lower_2: Ref(rsv_short, 2) < 25
+  short_lower_3: Ref(rsv_short, 3) < 25
+  upper_then_lower: (short_upper_4 and (short_lower_3 or short_lower_2 or short_lower_1 or short_lower_0)) or (short_upper_3 and (short_lower_2 or short_lower_1 or short_lower_0)) or (short_upper_2 and (short_lower_1 or short_lower_0)) or (short_upper_1 and short_lower_0)
+  ema12: EMA(close, 12)
+  ema26: EMA(close, 26)
+  dif: ema12 - ema26
+  dif_ok: dif > 0
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  ma14: Mean(close, 14)
+  ma28: Mean(close, 28)
+  ma57: Mean(close, 57)
+  ma114: Mean(close, 114)
+  zxdkx: (ma14 + ma28 + ma57 + ma114) / 4
+  zx_ok: (close > zxdkx * 0.995) and (zxdq > zxdkx * 0.995)
+  zx_core: (close > zxdkx) and (zxdq > zxdkx)
+  ret1_abs: Abs(close / (Ref(close, 1) + 1e-10) - 1)
+  amplitude: (high - low) / (low + 1e-10)
+  ret3: close / (Ref(close, 3) + 1e-10) - 1
+  ret5: close / (Ref(close, 5) + 1e-10) - 1
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  short_rank: CSPctRank(rsv_short)
+  long_rank: CSPctRank(rsv_long)
+  position_strength: close / (zxdkx + 1e-10) - 1
+  position_rank: CSPctRank(position_strength)
+  ret3_rank: CSPctRank(ret3)
+  ret5_rank: CSPctRank(ret5)
+  score: liquidity_rank * 0.90 + short_rank * 0.45 + long_rank * 0.35 + position_rank * 0.25 + ret3_rank * 0.20 + ret5_rank * 0.15 + Where(zx_core, 0.08, 0)
+signals:
+  day_ok: (ret1_abs < 0.025) and (amplitude < 0.075)
+  liquid_ok: liquidity_rank > 0.22
+  buy_signal: day_ok and liquid_ok and bbi_trend_ok and long_ok and upper_then_lower and short_upper_0 and dif_ok and zx_ok
+  sell_signal: not buy_signal
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 6
+  lag: 1
+  wrap_first_signal: false
+  reason: weak_to_strong_score_pool_shape_capacity_pos6_topk6
+rebalance:
+  type: equal_weight
+  max_positions: 6
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+execution:
+  deal_price: close
+  sell_rules:
+  - name: scale_12_keep85
+    when: pnl_pct > 0.120 and remaining_position_pct > 0.85
+    action: sell_to_position_pct
+    position_pct: 0.85
+  - name: take_profit_210permil
+    when: pnl_pct > 0.210
+    action: sell_all
+  - name: stop_loss_89permil
+    when: pnl_pct < -0.089
+    action: sell_all
+  - name: fast_exit_weak_early_hold_narrow_18d
+    when: holding_days > 18 and pnl_pct < 0 and hold_first_3d_return < -0.01 and hold_first_10d_return < -0.04 and peak_pnl_pct < 0.02 and trough_pnl_pct < -0.08
+    action: sell_all
+  - name: trail_peak15_dd10_exempt_zx_rsv45_rsvs25
+    when: holding_days >= 5 and peak_pnl_pct > 0.15 and drawdown_from_peak < -0.10 and not (close > zxdq and close > zxdkx and zxdq > zxdkx and rsv_long > 45 and rsv_short < 25)
+    action: sell_all
+  - name: time_stop_25d
+    when: holding_days > 25
+    action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

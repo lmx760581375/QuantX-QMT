@@ -1,0 +1,142 @@
+name: concept_rotation_momentum_static_pos12_top60_2016_2026_mainboard
+title: 静态概念动量轮动
+description: 概念轮动 fallback 最小验证版；使用 2026-06-25 东财概念静态快照，存在成分未来函数风险，仅用于判断概念动量方向是否值得继续。
+version: 1
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2016-01-04
+  end: latest
+  look_back_days: 320
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+groups:
+  concept:
+    source: meta.concept
+
+factors:
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  abs_ret1: Abs(ret1)
+  vol20_proxy: Mean(abs_ret1, 20)
+
+  ret5: close / (Ref(close, 5) + 1e-10) - 1
+  ret10: close / (Ref(close, 10) + 1e-10) - 1
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  ret60: close / (Ref(close, 60) + 1e-10) - 1
+
+  high60: Max(close, 60)
+  drawdown60: close / (high60 + 1e-10) - 1
+  dist_ma20: close / (ma20 + 1e-10) - 1
+  dist_ma60: close / (ma60 + 1e-10) - 1
+
+  turnover_amount: (open + close) / 2 * volume
+  turnover20: Mean(turnover_amount, 20)
+  liquidity_rank: CSPctRank(turnover20)
+
+  vol_ma20: Mean(volume, 20)
+  vol_ratio20: volume / (vol_ma20 + 1e-10)
+
+  market_ma20_strength: CSMean(close > ma20)
+  market_ma60_strength: CSMean(close > ma60)
+  market_ret20: CSMean(ret20)
+  market_ok: (market_ma60_strength >= 0.48) and (market_ret20 > -0.04)
+
+  stock_rs_score: CSPctRank(ret20) * 0.35 + CSPctRank(ret60) * 0.35 + CSPctRank(dist_ma60) * 0.15 + liquidity_rank * 0.15
+  low_risk_score: (1 - CSPctRank(vol20_proxy)) * 0.20 + CSPctRank(drawdown60) * 0.20
+
+group_factors:
+  concept_ret5: GroupMean(ret5, concept, agg="max")
+  concept_ret20: GroupMean(ret20, concept, agg="max")
+  concept_ret60: GroupMean(ret60, concept, agg="max")
+  concept_breadth20: GroupMean(close > ma20, concept, agg="max")
+  concept_breadth60: GroupMean(close > ma60, concept, agg="max")
+  concept_volume: GroupMean(vol_ratio20, concept, agg="max")
+  concept_rank20: GroupRank(ret20, concept, agg="min")
+  concept_rank60: GroupRank(ret60, concept, agg="min")
+  concept_score: concept_ret20 * 1.2 + concept_ret60 * 0.8 + concept_breadth20 * 0.25 + concept_breadth60 * 0.20 + concept_volume * 0.03 - concept_rank20 * 0.20
+
+signals:
+  concept_ok: (concept_rank20 <= 0.25) and (concept_rank60 <= 0.35) and (concept_ret20 > 0.03) and (concept_breadth20 > 0.50)
+  stock_trend_ok: (close > ma20) and (ma20 > ma60) and (close > ma60)
+  stock_momentum_ok: (ret20 > 0.03) and (ret60 > 0.04)
+  stock_risk_ok: (drawdown60 > -0.15) and (dist_ma20 < 0.18) and (vol20_proxy < 0.055)
+  liquidity_ok: liquidity_rank > 0.35
+  buy_signal: market_ok and concept_ok and stock_trend_ok and stock_momentum_ok and stock_risk_ok and liquidity_ok
+  sell_signal: (market_ma60_strength < 0.42) or (concept_rank20 > 0.45) or (close < ma60) or (drawdown60 < -0.20)
+  score: concept_score * 1.2 + stock_rs_score + low_risk_score
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 60
+  lag: 1
+  wrap_first_signal: false
+  reason: concept_rotation_static_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 12
+  max_positions_rules:
+    - when: market_ma60_strength < 0.48
+      value: 4
+    - when: market_ma60_strength < 0.55
+      value: 8
+  cash_use_ratio: 0.75
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: market_breadth_break
+      when: market_ma60_strength < 0.42
+      action: sell_all
+    - name: concept_strength_fade
+      when: concept_rank20 > 0.45
+      action: sell_all
+    - name: stock_trend_break_ma60
+      when: close < ma60
+      action: sell_all
+    - name: drawdown60_stop_20pct
+      when: drawdown60 < -0.20
+      action: sell_all
+    - name: time_review_45d
+      when: holding_days > 45 and close < ma20
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

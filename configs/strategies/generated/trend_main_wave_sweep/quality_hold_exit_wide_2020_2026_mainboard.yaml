@@ -1,0 +1,133 @@
+name: trend_main_wave_quality_hold_exit_wide_2020_2026_mainboard
+description: 质量持有版-宽退出：放宽止损和回撤，验证是否能抓住更多长趋势。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: '2026-07-03'
+  look_back_days: 320
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+factors:
+  ma5: Mean(close, 5)
+  ma10: Mean(close, 10)
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ma250: Mean(close, 250)
+  ma_bull: (ma5 > ma10) and (ma10 > ma20) and (ma20 > ma60) and (ma60 > ma120)
+  ma_slope_ok: (ma20 > Ref(ma20, 5)) and (ma60 > Ref(ma60, 10))
+  dist_ma120: close / (ma120 + 1e-10)
+  dist_ma20: close / (ma20 + 1e-10)
+  position_ok: (close > ma60) and (dist_ma120 > 1.03) and (dist_ma120 < 1.25) and
+    (dist_ma20 < 1.16)
+  high60_prev: Max(Ref(high, 1), 60)
+  breakout60: (close > high60_prev) and (close > Ref(close, 1)) and (close > open)
+  vol_ma20: Mean(volume, 20)
+  vol_ma60: Mean(volume, 60)
+  vol_ratio20: volume / (vol_ma20 + 1e-10)
+  vol_ratio60: volume / (vol_ma60 + 1e-10)
+  double_volume: (vol_ratio20 > 1.8) and (vol_ratio60 > 1.8)
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  body_ratio: (close - open) / (high - low + 1e-10)
+  candle_ok: (ret1 > 0.02) and (ret1 < 0.095) and (close > open) and (body_ratio >
+    0.35)
+  ema12: EMA(close, 12)
+  ema26: EMA(close, 26)
+  dif: ema12 - ema26
+  dea: EMA(dif, 9)
+  macd_strong: (dif > dea) and (dif > 0) and (dea > 0)
+  macd_accel: dif > Ref(dif, 1)
+  ret10: close / (Ref(close, 10) + 1e-10) - 1
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  ret60: close / (Ref(close, 60) + 1e-10) - 1
+  market_ret10: CSMean(ret10)
+  rank_ret10: CSPctRank(ret10)
+  rank_ret20: CSPctRank(ret20)
+  relative_strength: (ret10 > market_ret10 + 0.005) and (rank_ret10 > 0.75) and (rank_ret20
+    > 0.75)
+  market_ma20_strength: CSMean(close > ma20)
+  market_ma60_strength: CSMean(close > ma60)
+  market_ok: (market_ma60_strength >= 0.50) and (market_ma20_strength >= 0.50)
+  liquidity_amount: Mean((open + close) / 2 * volume, 20)
+  liquidity_rank: CSPctRank(liquidity_amount)
+  near_ma5_10: (low <= ma5 * 1.02) or (low <= ma10 * 1.02)
+  hold_ma10: close >= ma10 * 0.99
+  recover_candle: (close > open) and (close > Ref(close, 1))
+  confirm_volume_ok: volume >= vol_ma20 * 0.7
+  score: rank_ret20 * 1.2 + ret60 * 0.8 + market_ma60_strength * 0.2 + liquidity_rank
+    * 0.1 - dist_ma20 * 0.1
+signals:
+  setup_signal: ma_bull and ma_slope_ok and position_ok and breakout60 and double_volume
+    and candle_ok and macd_strong and macd_accel and relative_strength and market_ok
+    and (liquidity_rank > 0.35)
+  trend_break: close < ma20
+selector:
+  mode: watchlist
+  where: setup_signal
+  confirm: watchlist_age >= 1 and watchlist_age <= 5 and watchlist_pnl > -0.06 and
+    watchlist_pnl < 0.06 and near_ma5_10 and hold_ma10 and recover_candle and macd_strong
+    and confirm_volume_ok and close >= setup_high60_prev * 0.97 and close <= setup_high60_prev
+    * 1.08 and market_ok
+  score: score
+  sort: score_desc
+  topk: 3
+  lag: 1
+  watchlist:
+    min_age: 1
+    max_age: 5
+    remove_on_confirm: true
+  reason: trend_main_wave_quality_hold_buy
+rebalance:
+  type: equal_weight
+  max_positions: 3
+  max_positions_rules:
+  - when: market_ma60_strength < 0.50
+    value: 1
+  - when: market_ma60_strength < 0.55
+    value: 2
+  cash_use_ratio: 0.96
+  buy_only_new_positions: true
+execution:
+  deal_price: close
+  sell_rules:
+  - name: trend_break_ma20
+    when: trend_break
+    action: sell_all
+  - name: stop_loss_10pct
+    when: pnl_pct < -0.10
+    action: sell_all
+  - name: trail_after_profit
+    when: holding_days >= 8 and peak_pnl_pct > 0.25 and drawdown_from_peak < -0.12
+    action: sell_all
+  - name: time_stop_60d
+    when: holding_days > 60
+    action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false

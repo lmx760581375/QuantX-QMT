@@ -1,0 +1,119 @@
+name: etf_momentum_quality_defensive_top2_2016_2026
+title: ETF 防守动量质量轮动 Top2
+description: ETF 轮动防守对照版；在 Top2 基础上提高市场、趋势、回撤和波动约束，目标是降低回撤，验证是否适合作为弱转强空仓 fallback。
+version: 1
+
+data:
+  provider_uri: data/qlib_etf_data
+  universe: [SH510300, SH510500, SH512100, SZ159915, SH588080, SH510880, SH512890, SH512800, SH512880, SH512480, SZ159995, SH515050, SH512660, SH512010, SH512170, SH515790, SZ159928, SH512400, SH515220, SH518880, SH511380, SH511880, SH513100, SH513500, SH513030]
+  start: 2016-01-04
+  end: latest
+  look_back_days: 260
+
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+
+factors:
+  ma20: Mean(close, 20)
+  ma60: Mean(close, 60)
+  ma120: Mean(close, 120)
+  ret1: close / (Ref(close, 1) + 1e-10) - 1
+  ret20: close / (Ref(close, 20) + 1e-10) - 1
+  ret60: close / (Ref(close, 60) + 1e-10) - 1
+  ret120: close / (Ref(close, 120) + 1e-10) - 1
+  abs_ret1: Abs(ret1)
+  vol20_proxy: Mean(abs_ret1, 20)
+  vol60_proxy: Mean(abs_ret1, 60)
+  vol_ma5: Mean(volume, 5)
+  volume_ratio5: volume / (vol_ma5 + 1e-10)
+  high60: Max(close, 60)
+  high120: Max(close, 120)
+  drawdown60: close / (high60 + 1e-10) - 1
+  drawdown120: close / (high120 + 1e-10) - 1
+  dist_ma60: close / (ma60 + 1e-10) - 1
+  market_ret20: CSMean(ret20)
+  market_trend20: CSMean(close > ma20)
+  market_trend60: CSMean(close > ma60)
+  ret20_rank: CSPctRank(ret20)
+  ret60_rank: CSPctRank(ret60)
+  ret120_rank: CSPctRank(ret120)
+  low_vol_rank: 1 - CSPctRank(vol60_proxy)
+  dd_rank: CSPctRank(drawdown120)
+  trend_rank: CSPctRank(dist_ma60)
+  score: ret20_rank * 0.22 + ret60_rank * 0.32 + ret120_rank * 0.22 + low_vol_rank * 0.18 + dd_rank * 0.16 + trend_rank * 0.08
+
+signals:
+  loss3_ok: (ret1 > -0.025) and (Ref(ret1, 1) > -0.025) and (Ref(ret1, 2) > -0.025)
+  volume_ok: volume_ratio5 < 1.80
+  trend_ok: (close > ma20) and (ma20 > ma60) and (close > ma120)
+  momentum_ok: (ret20 > 0.005) and (ret60 > 0.030) and (ret120 > 0.000)
+  risk_ok: (drawdown60 > -0.09) and (drawdown120 > -0.16) and (vol20_proxy < 0.035)
+  market_ok: (market_trend20 >= 0.40) and ((market_trend60 >= 0.28) or (market_ret20 > 0.010))
+  buy_signal: market_ok and trend_ok and momentum_ok and risk_ok and loss3_ok and volume_ok
+
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: score
+  sort: score_desc
+  topk: 3
+  lag: 1
+  wrap_first_signal: false
+  reason: etf_momentum_quality_defensive_buy
+
+rebalance:
+  type: equal_weight
+  max_positions: 2
+  max_positions_rules:
+    - when: market_trend20 < 0.50
+      value: 1
+  cash_use_ratio: 0.80
+  buy_only_new_positions: true
+
+execution:
+  deal_price: close
+  sell_rules:
+    - name: market_weak
+      when: market_trend20 < 0.30
+      action: sell_all
+    - name: trend_break_ma20
+      when: close < ma20
+      action: sell_all
+    - name: drawdown60_stop_10pct
+      when: drawdown60 < -0.10
+      action: sell_all
+    - name: ret20_weak_stop
+      when: ret20 < -0.025
+      action: sell_all
+    - name: time_review_35d
+      when: holding_days > 35 and close < ma20
+      action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: false
+    reuse_sell_cash: true
+
+cost:
+  commission_rate: 0.0001
+  min_commission: 5.0
+  stamp_tax_rate: 0.0
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.0002
+
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true

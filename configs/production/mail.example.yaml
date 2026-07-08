@@ -1,0 +1,12 @@
+channel: qq_email
+smtp_host: smtp.qq.com
+smtp_port: 465
+ssl: true
+
+# Do not commit real credentials. Use environment variables instead:
+#   export QUANTX_MAIL_USERNAME="your@qq.com"
+#   export QUANTX_MAIL_PASSWORD="QQ邮箱SMTP授权码"
+#   export QUANTX_MAIL_TO="user1@qq.com,user2@qq.com"
+username_env: "2856765543@qq.com"
+password_env: "llrfbbnqirfhdfhh"
+recipients_env: "760581375@qq.com"

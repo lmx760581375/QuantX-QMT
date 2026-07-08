@@ -1,0 +1,51 @@
+# Data files (downloaded stock data)
+/data/*
+!/data/meta/
+/data/meta/*
+!/data/meta/README.md
+!/data/meta/snapshots/
+/data/meta/snapshots/*
+!/data/meta/snapshots/security_master.csv
+!/data/meta/snapshots/industry_membership.csv
+!/data/meta/snapshots/sector_membership.csv
+/qlib/**/data/
+
+# Generated artifacts and local archives
+/artifacts/
+/archived_runs/
+*.zip
+*.log
+*.out
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+runs/
+daily_runs/
+daily_state/
+configs/production/mail.yaml
+configs/production/*secret*.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Qlib temp
+qlib/_temp_csv/

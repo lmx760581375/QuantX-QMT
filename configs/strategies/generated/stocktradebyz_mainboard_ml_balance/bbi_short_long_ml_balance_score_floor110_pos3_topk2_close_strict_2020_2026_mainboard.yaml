@@ -1,0 +1,116 @@
+name: stocktradebyz_bbi_short_long_ml_balance_score_floor110_pos3_topk2_close_strict_2020_2026_mainboard
+description: BBIShortLong ML辅助 score 地板过滤实验：保留原冠军买点/卖点/topK2，仅要求 score > 1.10，测试是否能提高胜率且少砍右尾；max_positions=3。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_mainboard
+  start: 2020-01-02
+  end: '2026-07-03'
+  look_back_days: 320
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+factors:
+  ma3: Mean(close, 3)
+  ma6: Mean(close, 6)
+  ma12: Mean(close, 12)
+  ma24: Mean(close, 24)
+  bbi: (ma3 + ma6 + ma12 + ma24) / 4
+  bbi_trend_ok: BBIUptrend(bbi, 2, 120, 0.20)
+  rsv_short: (close - Min(low, 5)) / (Max(close, 5) - Min(low, 5) + 1e-10) * 100
+  rsv_long: (close - Min(low, 21)) / (Max(close, 21) - Min(low, 21) + 1e-10) * 100
+  long_ok: (rsv_long >= 75) and (Ref(rsv_long, 1) >= 75) and (Ref(rsv_long, 2) >=
+    75) and (Ref(rsv_long, 3) >= 75) and (Ref(rsv_long, 4) >= 75)
+  short_upper_0: rsv_short >= 75
+  short_upper_1: Ref(rsv_short, 1) >= 75
+  short_upper_2: Ref(rsv_short, 2) >= 75
+  short_upper_3: Ref(rsv_short, 3) >= 75
+  short_upper_4: Ref(rsv_short, 4) >= 75
+  short_lower_0: rsv_short < 25
+  short_lower_1: Ref(rsv_short, 1) < 25
+  short_lower_2: Ref(rsv_short, 2) < 25
+  short_lower_3: Ref(rsv_short, 3) < 25
+  upper_then_lower: (short_upper_4 and (short_lower_3 or short_lower_2 or short_lower_1
+    or short_lower_0)) or (short_upper_3 and (short_lower_2 or short_lower_1 or short_lower_0))
+    or (short_upper_2 and (short_lower_1 or short_lower_0)) or (short_upper_1 and
+    short_lower_0)
+  ema12: EMA(close, 12)
+  ema26: EMA(close, 26)
+  dif: ema12 - ema26
+  zxdq_1: EMA(close, 10)
+  zxdq: EMA(zxdq_1, 10)
+  ma14: Mean(close, 14)
+  ma28: Mean(close, 28)
+  ma57: Mean(close, 57)
+  ma114: Mean(close, 114)
+  zxdkx: (ma14 + ma28 + ma57 + ma114) / 4
+  ret1_abs: Abs(close / (Ref(close, 1) + 1e-10) - 1)
+  amplitude: (high - low) / (low + 1e-10)
+  turnover_amount: (open + close) / 2 * volume
+  turnover43: Mean(turnover_amount, 43)
+  liquidity_rank: CSPctRank(turnover43)
+  score: liquidity_rank + (rsv_short - 75) * 0.01 + (close / (zxdkx + 1e-10) - 1)
+    * 0.2
+signals:
+  day_ok: (ret1_abs < 0.02) and (amplitude < 0.07)
+  zx_ok: (close > zxdkx) and (zxdq > zxdkx)
+  buy_signal: day_ok and bbi_trend_ok and long_ok and upper_then_lower and short_upper_0
+    and (dif > 0) and zx_ok
+  sell_signal: not buy_signal
+selector:
+  mode: precomputed
+  where: buy_signal and score > 1.10
+  score: score
+  sort: score_desc
+  topk: 2
+  lag: 1
+  wrap_first_signal: false
+  reason: bbi_short_long_ml_balance_score_floor110_pos3_topk2_buy
+rebalance:
+  type: equal_weight
+  max_positions: 3
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+execution:
+  deal_price: close
+  sell_rules:
+  - name: take_profit_210permil
+    when: pnl_pct > 0.210
+    action: sell_all
+  - name: stop_loss_89permil
+    when: pnl_pct < -0.089
+    action: sell_all
+  - name: trail_peak15_dd10_exempt_zx_rsv45_rsvs25
+    when: holding_days >= 5 and peak_pnl_pct > 0.15 and drawdown_from_peak < -0.10
+      and not (close > zxdq and close > zxdkx and zxdq > zxdkx and rsv_long > 45 and
+      rsv_short < 25)
+    action: sell_all
+  - name: time_stop_25d
+    when: holding_days > 25
+    action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: false
