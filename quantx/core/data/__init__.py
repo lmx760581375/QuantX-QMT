@@ -6,6 +6,9 @@
 from .base import DataSource, OHLCV_FIELDS, EXTENDED_FIELDS, QLIB_FIELDS
 from .baostock_client import BaoStockClient
 from .baostock_source import BaoStockDataSource, BaoStockConfig
+from .factory import create_data_source
+from .qmt_client import QMTClient
+from .qmt_source import QMTConfig, QMTDataSource
 from .calendar import TradingCalendar
 from .adjuster import Adjuster
 from .converter import BaostockToQlibConverter
@@ -23,6 +26,10 @@ __all__ = [
     "BaoStockClient",
     "BaoStockDataSource",
     "BaoStockConfig",
+    "QMTClient",
+    "QMTDataSource",
+    "QMTConfig",
+    "create_data_source",
     "TradingCalendar",
     "Adjuster",
     "BaostockToQlibConverter",

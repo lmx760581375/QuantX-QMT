@@ -1,4 +1,4 @@
-"""Adjustment-aware incremental BaoStock to Qlib data update."""
+"""Incremental market data update into QuantX Qlib data."""
 
 from __future__ import annotations
 
@@ -8,7 +8,13 @@ import sys
 from pathlib import Path
 from typing import List
 
-from quantx.core.data import AdjustmentAwareIncrementalUpdater, BaoStockClient, BaostockToQlibConverter, LocalDataRepository
+from quantx.core.data import (
+    AdjustmentAwareIncrementalUpdater,
+    BaoStockClient,
+    BaostockToQlibConverter,
+    LocalDataRepository,
+    QMTClient,
+)
 
 
 def _load_symbols(args) -> List[str] | None:
@@ -23,8 +29,9 @@ def _load_symbols(args) -> List[str] | None:
 
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", default="qmt", choices=["qmt", "baostock"], help="Market data provider.")
     parser.add_argument("--provider-uri", default="data/qlib_data_fixed", help="Qlib provider directory to update.")
-    parser.add_argument("--raw-dir", default="data/raw/baostock", help="BaoStock raw CSV repository root.")
+    parser.add_argument("--raw-dir", help="Raw CSV repository root. Defaults to data/raw/qmt or data/raw/baostock.")
     parser.add_argument("--mode", default="incremental", choices=["incremental"], help="Only safe incremental mode is supported.")
     parser.add_argument("--symbols", nargs="*", help="Optional symbols to update, e.g. SH600000 SZ000001.")
     parser.add_argument("--symbol-file", help="Optional file with one symbol per line.")
@@ -33,23 +40,38 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--overlap-days", type=int, default=40, help="Local trading rows to refetch and compare.")
     parser.add_argument("--tolerance", type=float, default=1e-4, help="Price mismatch tolerance for adjusted history.")
     parser.add_argument("--full-refresh-start", default="2010-01-01", help="Fallback start date for new symbols.")
-    parser.add_argument("--pause-seconds", type=float, default=0.5, help="BaoStock request pause; keep serial to respect BaoStock rules.")
+    parser.add_argument("--pause-seconds", type=float, help="Provider request pause seconds.")
     parser.add_argument("--socket-timeout", type=float, default=30.0, help="BaoStock socket timeout seconds to avoid hanging forever.")
     parser.add_argument("--max-requests", type=int, default=45000, help="Stop before exceeding the daily BaoStock logical request budget.")
+    parser.add_argument("--qmt-dividend-type", default="front_ratio", help="QMT xtdata dividend_type for daily bars.")
     parser.add_argument("--progress-every", type=int, default=1, help="Print progress to stderr every N symbols.")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and compare but do not write CSV or Qlib bins.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     args = parser.parse_args(argv)
 
-    repository = LocalDataRepository(args.raw_dir)
+    raw_dir = args.raw_dir or ("data/raw/qmt" if args.source == "qmt" else "data/raw/baostock")
+    pause_seconds = args.pause_seconds
+    if pause_seconds is None:
+        pause_seconds = 0.0 if args.source == "qmt" else 0.5
+
+    repository = LocalDataRepository(raw_dir)
     converter = BaostockToQlibConverter(
         qlib_dir=args.provider_uri,
-        csv_dir=str(Path(args.raw_dir) / "stocks"),
+        csv_dir=str(Path(raw_dir) / "stocks"),
     )
+    if args.source == "qmt":
+        client_factory = lambda: QMTClient(
+            dividend_type=args.qmt_dividend_type,
+            pause_seconds=pause_seconds,
+            max_retries=3,
+        )
+    else:
+        client_factory = lambda: BaoStockClient(pause_seconds=pause_seconds, socket_timeout=args.socket_timeout)
+
     updater = AdjustmentAwareIncrementalUpdater(
         repository=repository,
         converter=converter,
-        client_factory=lambda: BaoStockClient(pause_seconds=args.pause_seconds, socket_timeout=args.socket_timeout),
+        client_factory=client_factory,
         overlap_days=args.overlap_days,
         tolerance=args.tolerance,
         full_refresh_start=args.full_refresh_start,
