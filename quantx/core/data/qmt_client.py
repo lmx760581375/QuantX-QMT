@@ -63,6 +63,7 @@ class QMTClient:
         end_date: str,
         fields: Optional[List[str]] = None,
         dividend_type: Optional[str] = None,
+        download_first: bool = True,
     ) -> pd.DataFrame:
         last_error: Exception | None = None
         for attempt in range(max(1, self.max_retries)):
@@ -73,6 +74,7 @@ class QMTClient:
                     end_date,
                     fields=fields,
                     dividend_type=dividend_type,
+                    download_first=download_first,
                 )
                 if not frame.empty:
                     return frame
@@ -92,6 +94,7 @@ class QMTClient:
         end_date: str,
         fields: Optional[List[str]] = None,
         dividend_type: Optional[str] = None,
+        download_first: bool = True,
     ) -> pd.DataFrame:
         xtdata = self.xtdata
         qmt_symbol = to_qmt_symbol(symbol)
@@ -99,8 +102,10 @@ class QMTClient:
         end = to_qmt_date(end_date)
         qmt_dividend_type = dividend_type or self.dividend_type
 
-        xtdata.download_history_data(qmt_symbol, period="1d", start_time=start, end_time=end)
+        if download_first:
+            self.download_history_data(qmt_symbol, start, end)
 
+        query_started = time.perf_counter()
         field_list = _to_qmt_fields(fields)
         data = xtdata.get_market_data_ex(
             field_list=field_list,
@@ -114,16 +119,45 @@ class QMTClient:
         )
         raw = data.get(qmt_symbol) if isinstance(data, dict) else None
         if raw is None or raw.empty:
+            logger.warning(
+                "QMT query returned empty symbol=%s start=%s end=%s elapsed=%.2fs",
+                qmt_symbol,
+                start,
+                end,
+                time.perf_counter() - query_started,
+            )
             return pd.DataFrame()
-        return normalize_qmt_bars(raw, qmt_symbol)
+        frame = normalize_qmt_bars(raw, qmt_symbol)
+        logger.info(
+            "QMT query done symbol=%s rows=%s elapsed=%.2fs",
+            qmt_symbol,
+            len(frame),
+            time.perf_counter() - query_started,
+        )
+        return frame
+
+    def download_history_data(self, symbol: str, start_date: str, end_date: str, period: str = "1d") -> bool:
+        xtdata = self.xtdata
+        qmt_symbol = to_qmt_symbol(symbol)
+        start = to_qmt_date(start_date)
+        end = to_qmt_date(end_date)
+        download_started = time.perf_counter()
+        logger.info("QMT download start symbol=%s period=%s start=%s end=%s", qmt_symbol, period, start, end)
+        try:
+            xtdata.download_history_data(qmt_symbol, period=period, start_time=start, end_time=end)
+        except Exception:
+            logger.exception("QMT download failed symbol=%s period=%s start=%s end=%s", qmt_symbol, period, start, end)
+            raise
+        logger.info(
+            "QMT download done symbol=%s period=%s elapsed=%.2fs",
+            qmt_symbol,
+            period,
+            time.perf_counter() - download_started,
+        )
+        return True
 
     def get_stock_codes(self, sectors: Optional[Iterable[str]] = None) -> List[str]:
         xtdata = self.xtdata
-        try:
-            xtdata.download_sector_data()
-        except Exception as exc:  # pragma: no cover - provider behavior varies by install.
-            logger.warning("Failed to download QMT sector data before stock list query: %s", exc)
-
         symbols: list[str] = []
         for sector in sectors or self.DEFAULT_SECTORS:
             try:

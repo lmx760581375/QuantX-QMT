@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import List, Optional
@@ -14,6 +15,7 @@ from .baostock_source import QlibInitializer
 from .calendar import TradingCalendar
 from .converter import BaostockToQlibConverter
 from .qmt_client import QMTClient, normalize_symbol
+from .qlib_reader import QlibBinReader
 from .repository import LocalDataRepository
 from .sync_service import SyncReport
 
@@ -30,6 +32,7 @@ class QMTConfig:
     auto_update: bool = True
     pause_seconds: float = 0.0
     max_retries: int = 3
+    workers: int = 8
 
 
 class QMTDataSource(DataSource):
@@ -59,12 +62,8 @@ class QMTDataSource(DataSource):
     ) -> pd.DataFrame:
         normalized = [normalize_symbol(symbol) for symbol in symbols]
         self._ensure_ready(start_date, end_date, normalized)
-        QlibInitializer.init(self.config.qlib_dir, "cn")
-
-        from qlib.data import D
-
         qlib_fields = _qlib_fields(fields)
-        frame = D.features(normalized, qlib_fields, start_date, end_date, freq="day")
+        frame = self._load_qlib_features(normalized, qlib_fields, start_date, end_date)
         return _strip_qlib_prefix(frame)
 
     def get_dividend_factors(self, symbols: List[str]) -> pd.DataFrame:
@@ -89,12 +88,9 @@ class QMTDataSource(DataSource):
     def get_benchmark(self, benchmark: str, start_date: str, end_date: str) -> pd.DataFrame:
         normalized = normalize_symbol(benchmark)
         self._ensure_ready(start_date, end_date, [normalized])
-        QlibInitializer.init(self.config.qlib_dir, "cn")
-
-        from qlib.data import D
 
         try:
-            return D.features([normalized], ["$close"], start_date, end_date, freq="day")
+            return self._load_qlib_features([normalized], ["$close"], start_date, end_date)
         except Exception:
             logger.warning("Benchmark %s not available from QMT provider", benchmark)
             return pd.DataFrame()
@@ -133,18 +129,8 @@ class QMTDataSource(DataSource):
         if not symbol_list:
             return self.sync_data(start="2015-01-01", end=end)
 
-        report = SyncReport(total_symbols=len(symbol_list), end_time=end)
-        with self._new_client() as client:
-            for symbol in symbol_list:
-                start = self.repository.get_last_date(symbol) or "2015-01-01"
-                frame = client.query_history_k_data_with_retry(symbol, start, end)
-                if frame.empty:
-                    report.failed_count += 1
-                    report.failed_symbols.append(symbol)
-                    continue
-                self.repository.save_symbol(symbol, frame)
-                report.synced_count += 1
-                report.updated_stocks.append(symbol)
+        requests = [(symbol, self.repository.get_last_date(symbol) or "2015-01-01", end) for symbol in symbol_list]
+        report = self._sync_requests(requests, replace=False)
         if report.updated_stocks:
             self.converter.convert_incremental(report.updated_stocks)
         return report
@@ -169,21 +155,124 @@ class QMTDataSource(DataSource):
         self.calendar = TradingCalendar(provider_uri=self.config.qlib_dir)
 
     def _sync_symbols(self, symbols: List[str], start: str, end: str, replace: bool) -> SyncReport:
-        report = SyncReport(total_symbols=len(symbols), start_time=start, end_time=end)
-        with self._new_client() as client:
-            for symbol in symbols:
-                frame = client.query_history_k_data_with_retry(symbol, start, end)
-                if frame.empty:
-                    report.failed_count += 1
-                    report.failed_symbols.append(symbol)
-                    continue
-                if replace:
-                    self.repository.replace_symbol(symbol, frame)
-                else:
-                    self.repository.save_symbol(symbol, frame)
-                report.synced_count += 1
-                report.updated_stocks.append(symbol)
+        requests = [(symbol, start, end) for symbol in symbols]
+        return self._sync_requests(requests, replace=replace)
+
+    def _sync_requests(self, requests: List[tuple[str, str, str]], replace: bool) -> SyncReport:
+        start_time = min((start for _, start, _ in requests), default="")
+        end_time = max((end for _, _, end in requests), default="")
+        report = SyncReport(total_symbols=len(requests), start_time=start_time, end_time=end_time)
+        if not requests:
+            return report
+
+        download_ok, download_failed = self._download_requests(requests)
+        if download_failed:
+            report.failed_count += len(download_failed)
+            report.failed_symbols.extend(download_failed)
+        if download_ok:
+            ok_symbols = set(download_ok)
+            requests = [request for request in requests if request[0] in ok_symbols]
+        else:
+            logger.warning("No QMT downloads succeeded for %s requested symbols", report.total_symbols)
+            report.failed_count = report.total_symbols
+            report.failed_symbols = [symbol for symbol, _, _ in requests]
+            return report
+
+        workers = max(1, int(self.config.workers))
+        if workers == 1:
+            for symbol, start, end in requests:
+                frame = self._fetch_symbol(symbol, start, end)
+                self._record_sync_result(report, symbol, frame, replace=replace)
+            return report
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(self._fetch_symbol, symbol, start, end): symbol
+                for symbol, start, end in requests
+            }
+            done = 0
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    frame = future.result()
+                except Exception as exc:  # pragma: no cover - provider errors are environment-specific.
+                    logger.warning("QMT sync failed for %s: %s", symbol, exc)
+                    frame = pd.DataFrame()
+                self._record_sync_result(report, symbol, frame, replace=replace)
+                done += 1
+                if done == 1 or done % 50 == 0 or done == report.total_symbols:
+                    logger.info(
+                        "QMT sync progress %s/%s, synced=%s, failed=%s, latest=%s",
+                        done,
+                        report.total_symbols,
+                        report.synced_count,
+                        report.failed_count,
+                        symbol,
+                    )
         return report
+
+    def _download_requests(self, requests: List[tuple[str, str, str]]) -> tuple[List[str], List[str]]:
+        workers = max(1, int(self.config.workers))
+        ok: list[str] = []
+        failed: list[str] = []
+        logger.info("QMT download batch start total=%s workers=%s", len(requests), workers)
+
+        if workers == 1:
+            for idx, (symbol, start, end) in enumerate(requests, start=1):
+                if self._download_symbol(symbol, start, end):
+                    ok.append(symbol)
+                else:
+                    failed.append(symbol)
+                if idx == 1 or idx % 50 == 0 or idx == len(requests):
+                    logger.info("QMT download progress %s/%s, ok=%s, failed=%s", idx, len(requests), len(ok), len(failed))
+            logger.info("QMT download batch done ok=%s failed=%s", len(ok), len(failed))
+            return ok, failed
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(self._download_symbol, symbol, start, end): symbol
+                for symbol, start, end in requests
+            }
+            done = 0
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    success = bool(future.result())
+                except Exception as exc:  # pragma: no cover - provider errors are environment-specific.
+                    logger.warning("QMT download failed for %s: %s", symbol, exc)
+                    success = False
+                if success:
+                    ok.append(symbol)
+                else:
+                    failed.append(symbol)
+                done += 1
+                if done == 1 or done % 50 == 0 or done == len(requests):
+                    logger.info("QMT download progress %s/%s, ok=%s, failed=%s, latest=%s", done, len(requests), len(ok), len(failed), symbol)
+
+        if failed:
+            logger.warning("QMT download failed symbols count=%s sample=%s", len(failed), failed[:20])
+        logger.info("QMT download batch done ok=%s failed=%s", len(ok), len(failed))
+        return ok, failed
+
+    def _download_symbol(self, symbol: str, start: str, end: str) -> bool:
+        with self._new_client() as client:
+            return client.download_history_data(symbol, start, end)
+
+    def _fetch_symbol(self, symbol: str, start: str, end: str) -> pd.DataFrame:
+        with self._new_client() as client:
+            return client.query_history_k_data_with_retry(symbol, start, end, download_first=False)
+
+    def _record_sync_result(self, report: SyncReport, symbol: str, frame: pd.DataFrame, replace: bool) -> None:
+        if frame.empty:
+            report.failed_count += 1
+            report.failed_symbols.append(symbol)
+            return
+        if replace:
+            self.repository.replace_symbol(symbol, frame)
+        else:
+            self.repository.save_symbol(symbol, frame)
+        report.synced_count += 1
+        report.updated_stocks.append(symbol)
 
     def _new_client(self) -> QMTClient:
         return QMTClient(
@@ -191,6 +280,16 @@ class QMTDataSource(DataSource):
             pause_seconds=self.config.pause_seconds,
             max_retries=self.config.max_retries,
         )
+
+    def _load_qlib_features(self, symbols: List[str], fields: List[str], start: str, end: str) -> pd.DataFrame:
+        try:
+            QlibInitializer.init(self.config.qlib_dir, "cn")
+            from qlib.data import D
+
+            return D.features(symbols, fields, start, end, freq="day")
+        except Exception as exc:
+            logger.warning("Falling back to built-in qlib bin reader for QMT data: %s", exc)
+            return QlibBinReader(self.config.qlib_dir).features(symbols, fields, start, end)
 
 
 def qmt_config_from_mapping(data: dict | None) -> QMTConfig:

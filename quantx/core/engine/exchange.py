@@ -5,12 +5,12 @@
 """
 
 import logging
-import os
-import sys
-from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
+
+from quantx.core.qlib_import import import_qlib
+from quantx.core.data.qlib_reader import QlibBinReader
 
 from .board import BoardManager
 from .types import OrderAction
@@ -30,58 +30,33 @@ class AStockExchange:
         self.provider_uri = provider_uri
         self.quote: Optional[pd.DataFrame] = None
         self._initialized = False
+        self._reader: Optional[QlibBinReader] = None
         self.deal_price: str = "open"
 
     def _init_qlib(self) -> None:
         if self._initialized:
             return
-        qlib = self._import_qlib()
-        qlib.init(provider_uri=self.provider_uri, region="cn")
+        try:
+            qlib = self._import_qlib()
+            qlib.init(provider_uri=self.provider_uri, region="cn")
+        except Exception as exc:
+            logger.warning("Falling back to built-in qlib bin reader: %s", exc)
+            self._reader = QlibBinReader(self.provider_uri)
         self._initialized = True
 
     @staticmethod
     def _import_qlib():
-        """Prefer the installed qlib package over this repo's uncompiled qlib source tree."""
-        repo_root = Path(__file__).resolve().parents[3]
-        local_qlib = repo_root / "qlib"
-
-        def is_local_qlib_module(module) -> bool:
-            module_file = getattr(module, "__file__", None)
-            if not module_file:
-                return False
-            try:
-                return local_qlib.resolve() in Path(module_file).resolve().parents
-            except OSError:
-                return False
-
-        def is_blocked_path(path: str) -> bool:
-            resolved = Path(path or os.getcwd()).resolve()
-            return resolved == repo_root.resolve() or resolved == local_qlib.resolve()
-
-        existing = sys.modules.get("qlib")
-        if existing is not None and is_local_qlib_module(existing):
-            for name in list(sys.modules):
-                if name == "qlib" or name.startswith("qlib."):
-                    del sys.modules[name]
-
-        original_path = list(sys.path)
-        sys.path = [p for p in original_path if not is_blocked_path(p)]
-        try:
-            qlib = __import__("qlib")
-            if is_local_qlib_module(qlib):
-                raise ImportError("local qlib source tree was imported")
-            return qlib
-        except ImportError:
-            sys.path = original_path
-            return __import__("qlib")
-        finally:
-            sys.path = original_path
+        return import_qlib()
 
     def load_quote_data(self, symbols: List[str], start: str, end: str) -> None:
         self._init_qlib()
-        from qlib.data import D
         fields = ["$open", "$high", "$low", "$close", "$volume", "$change", "$factor", "$vwap"]
-        quote = D.features(symbols, fields, start, end, freq="day")
+        if self._reader is not None:
+            quote = self._reader.features(symbols, fields, start, end)
+        else:
+            from qlib.data import D
+
+            quote = D.features(symbols, fields, start, end, freq="day")
         self.quote = self._normalize_quote_index(quote)
 
     @staticmethod
@@ -110,8 +85,12 @@ class AStockExchange:
     def get_trading_dates(self, start: str, end: str) -> List[str]:
         """获取交易日列表"""
         self._init_qlib()
-        from qlib.data import D
-        cal = D.calendar(start_time=start, end_time=end)
+        if self._reader is not None:
+            cal = self._reader.calendar(start, end)
+        else:
+            from qlib.data import D
+
+            cal = D.calendar(start_time=start, end_time=end)
         return pd.to_datetime(cal).strftime("%Y-%m-%d").tolist()
 
     def get_deal_price(

@@ -86,18 +86,31 @@ class BaostockToQlibConverter:
         if not csv_files:
             logger.warning("No CSV files found for conversion")
             return
+        logger.info("Conversion CSV files found: %s", len(csv_files))
 
         # 2. 加载所有数据，收集交易日历
         all_data = {}
         all_dates: Set[pd.Timestamp] = set()
         instruments = []
 
-        for csv_file in csv_files:
+        total_rows = 0
+        for idx, csv_file in enumerate(csv_files, start=1):
             symbol = csv_file.stem  # 如 SH600519
             df = self._load_and_process(csv_file, symbol, start, end)
             if df.empty:
+                if idx == 1 or idx % 100 == 0 or idx == len(csv_files):
+                    logger.info(
+                        "Conversion load progress %s/%s, loaded=%s, skipped=%s, rows=%s, latest=%s",
+                        idx,
+                        len(csv_files),
+                        len(all_data),
+                        idx - len(all_data),
+                        total_rows,
+                        symbol,
+                    )
                 continue
             all_data[symbol] = df
+            total_rows += len(df)
             dates = pd.to_datetime(df["date"])
             all_dates.update(dates)
             instruments.append({
@@ -105,6 +118,16 @@ class BaostockToQlibConverter:
                 "start": dates.min().strftime("%Y-%m-%d"),
                 "end": dates.max().strftime("%Y-%m-%d"),
             })
+            if idx == 1 or idx % 100 == 0 or idx == len(csv_files):
+                logger.info(
+                    "Conversion load progress %s/%s, loaded=%s, skipped=%s, rows=%s, latest=%s",
+                    idx,
+                    len(csv_files),
+                    len(all_data),
+                    idx - len(all_data),
+                    total_rows,
+                    symbol,
+                )
 
         if not all_data:
             logger.warning("No data to convert")
@@ -119,8 +142,7 @@ class BaostockToQlibConverter:
 
         # 5. 写入 instruments
         self._write_instruments(instruments)
-
-        # 6. 写入 features（每只股票每个字段一个 .bin 文件）
+        logger.info("Writing Qlib feature bin files: stocks=%s, days=%s", len(all_data), len(calendar_list))
         self._write_features(all_data, calendar_list)
 
         logger.info(f"Conversion complete: {len(all_data)} stocks, {len(calendar_list)} days")
@@ -347,7 +369,8 @@ class BaostockToQlibConverter:
         date_to_idx = {d: i for i, d in enumerate(calendar_list)}
         fields = ["$open", "$high", "$low", "$close", "$volume", "$vwap", "$factor", "$change"]
 
-        for symbol, df in all_data.items():
+        total_symbols = len(all_data)
+        for idx, (symbol, df) in enumerate(all_data.items(), start=1):
             if df.empty:
                 continue
 
@@ -384,5 +407,14 @@ class BaostockToQlibConverter:
                     logger.debug("Rewriting %s in append mode to preserve qlib bin alignment", bin_path)
 
                 np.hstack([np.array([start_idx], dtype=np.float32), aligned]).astype("<f").tofile(str(bin_path))
+
+            if idx == 1 or idx % 100 == 0 or idx == total_symbols:
+                logger.info(
+                    "Feature write progress %s/%s, fields=%s, latest=%s",
+                    idx,
+                    total_symbols,
+                    len(fields),
+                    symbol,
+                )
 
         logger.info(f"Features written ({mode}): {len(all_data)} stocks, {len(fields)} fields")

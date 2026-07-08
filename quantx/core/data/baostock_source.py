@@ -11,10 +11,13 @@ from typing import List, Optional
 
 import pandas as pd
 
+from quantx.core.qlib_import import import_qlib
+
 from .base import DataSource
 from .baostock_client import BaoStockClient
 from .calendar import TradingCalendar
 from .converter import BaostockToQlibConverter
+from .qlib_reader import QlibBinReader
 from .repository import LocalDataRepository
 from .sync_service import DataSyncService
 
@@ -41,9 +44,7 @@ class QlibInitializer:
     @classmethod
     def init(cls, provider_uri: str, region: str = "cn") -> None:
         if not cls._initialized or cls._provider_uri != provider_uri:
-            import qlib
-            from qlib.config import C
-
+            qlib = import_qlib()
             qlib.init(provider_uri=provider_uri, region=region)
             cls._initialized = True
             cls._provider_uri = provider_uri
@@ -102,23 +103,23 @@ class BaoStockDataSource(DataSource):
         # 确保 Qlib 数据就绪
         self._ensure_ready(start_date, end_date, symbols)
 
-        # 从 Qlib 读取数据
-        from qlib.data import D
-
         if fields is None:
             qlib_fields = ["$open", "$high", "$low", "$close", "$volume", "$vwap", "$change"]
         else:
             qlib_fields = [f"${f}" for f in fields]
 
         try:
+            QlibInitializer.init(self.config.qlib_dir, "cn")
+            from qlib.data import D
+
             df = D.features(symbols, qlib_fields, start_date, end_date, freq="day")
-            # 去掉 $ 前缀
-            rename_map = {f"${f}": f for f in ["open", "high", "low", "close", "volume", "vwap", "change"]}
-            df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
-            return df
         except Exception as e:
-            logger.error(f"Failed to load data from Qlib: {e}")
-            raise
+            logger.warning("Falling back to built-in qlib bin reader for BaoStock data: %s", e)
+            df = QlibBinReader(self.config.qlib_dir).features(symbols, qlib_fields, start_date, end_date)
+        # 去掉 $ 前缀
+        rename_map = {f"${f}": f for f in ["open", "high", "low", "close", "volume", "vwap", "change"]}
+        df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+        return df
 
     def get_dividend_factors(self, symbols: List[str]) -> pd.DataFrame:
         """获取复权因子"""
@@ -152,12 +153,14 @@ class BaoStockDataSource(DataSource):
         """获取基准指数数据"""
         self._ensure_ready(start_date, end_date, [benchmark])
 
-        from qlib.data import D
         try:
+            QlibInitializer.init(self.config.qlib_dir, "cn")
+            from qlib.data import D
+
             return D.features([benchmark], ["$close"], start_date, end_date, freq="day")
-        except Exception:
-            logger.warning(f"Benchmark {benchmark} not available, returning empty")
-            return pd.DataFrame()
+        except Exception as exc:
+            logger.warning("Falling back to built-in qlib bin reader for benchmark %s: %s", benchmark, exc)
+            return QlibBinReader(self.config.qlib_dir).features([benchmark], ["$close"], start_date, end_date)
 
     def get_trading_dates(self, start_date: str, end_date: str) -> List[str]:
         """获取交易日列表"""

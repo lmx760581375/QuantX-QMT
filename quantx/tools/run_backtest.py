@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -266,6 +267,7 @@ def _make_run_id(config: Dict[str, Any]) -> str:
 
 
 def main(argv: List[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="Path to strategy YAML config.")
     parser.add_argument("--symbol-limit", type=int, help="Override data.symbol_limit for smoke tests.")
