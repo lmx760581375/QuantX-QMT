@@ -33,6 +33,7 @@ class QMTConfig:
     pause_seconds: float = 0.0
     max_retries: int = 3
     workers: int = 8
+    fill_data: bool = True
 
 
 class QMTDataSource(DataSource):
@@ -42,6 +43,7 @@ class QMTDataSource(DataSource):
         self.config = config or QMTConfig()
         self.client = QMTClient(
             dividend_type=self.config.dividend_type,
+            fill_data=self.config.fill_data,
             pause_seconds=self.config.pause_seconds,
             max_retries=self.config.max_retries,
         )
@@ -277,6 +279,7 @@ class QMTDataSource(DataSource):
     def _new_client(self) -> QMTClient:
         return QMTClient(
             dividend_type=self.config.dividend_type,
+            fill_data=self.config.fill_data,
             pause_seconds=self.config.pause_seconds,
             max_retries=self.config.max_retries,
         )

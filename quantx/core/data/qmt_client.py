@@ -25,10 +25,12 @@ class QMTClient:
     def __init__(
         self,
         dividend_type: str = "front_ratio",
+        fill_data: bool = True,
         pause_seconds: float = 0.0,
         max_retries: int = 3,
     ):
         self.dividend_type = dividend_type
+        self.fill_data = bool(fill_data)
         self.pause_seconds = float(pause_seconds)
         self.max_retries = int(max_retries)
         self._xtdata = None
@@ -115,7 +117,7 @@ class QMTClient:
             end_time=end,
             count=-1,
             dividend_type=qmt_dividend_type,
-            fill_data=False,
+            fill_data=self.fill_data,
         )
         raw = data.get(qmt_symbol) if isinstance(data, dict) else None
         if raw is None or raw.empty:

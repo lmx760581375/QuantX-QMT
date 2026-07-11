@@ -1,7 +1,16 @@
 """Config runner tests."""
 
+import pytest
+
 from quantx.core.engine import TransactionCost
-from quantx.tools.run_backtest import build_backtest_config, dry_run_config, load_symbols, resolve_config_dates
+from quantx.core.engine.engine import BacktestConfig
+from quantx.tools.run_backtest import (
+    build_backtest_config,
+    dry_run_config,
+    load_symbols,
+    resolve_config_dates,
+    validate_backtest_data_coverage,
+)
 
 
 def test_dry_run_config_compiles_shuijiao_yaml():
@@ -96,3 +105,43 @@ def test_resolve_config_dates_supports_latest_end(tmp_path):
 
     assert resolved["data"]["end"] == "2021-01-05"
     assert cfg.end_date == "2021-01-05"
+
+
+def test_validate_backtest_data_coverage_rejects_missing_lookback(tmp_path):
+    provider = tmp_path / "provider"
+    (provider / "calendars").mkdir(parents=True)
+    (provider / "calendars" / "day.txt").write_text(
+        "2020-01-10\n2020-01-13\n2020-01-14\n",
+        encoding="utf-8",
+    )
+
+    cfg = BacktestConfig(
+        provider_uri=str(provider),
+        start_date="2020-01-10",
+        end_date="2020-01-14",
+        look_back_days=30,
+    )
+
+    with pytest.raises(RuntimeError, match="look_back_days"):
+        validate_backtest_data_coverage(cfg)
+
+
+def test_validate_backtest_data_coverage_allows_weekend_gap(tmp_path):
+    provider = tmp_path / "provider"
+    (provider / "calendars").mkdir(parents=True)
+    (provider / "calendars" / "day.txt").write_text(
+        "2020-01-06\n2020-01-07\n2020-01-08\n",
+        encoding="utf-8",
+    )
+
+    cfg = BacktestConfig(
+        provider_uri=str(provider),
+        start_date="2020-01-06",
+        end_date="2020-01-08",
+        look_back_days=2,
+    )
+
+    coverage = validate_backtest_data_coverage(cfg)
+
+    assert coverage["load_start"] == "2020-01-04"
+    assert coverage["first_available_date"] == "2020-01-06"

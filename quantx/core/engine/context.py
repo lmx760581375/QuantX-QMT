@@ -4,6 +4,8 @@
 从 Qlib 加载行情 + 因子数据，管理交易日历和信号矩阵。
 """
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -17,6 +19,45 @@ from .exchange import AStockExchange
 from .types import Signal
 
 logger = logging.getLogger(__name__)
+
+LOOKBACK_COVERAGE_TOLERANCE_DAYS = 10
+
+
+def compute_load_start(start: str, look_back_days: int) -> str:
+    if look_back_days and look_back_days > 0:
+        return (pd.Timestamp(start) - timedelta(days=int(look_back_days))).strftime("%Y-%m-%d")
+    return str(start)
+
+
+def validate_trading_calendar_coverage(
+    dates: List[str] | pd.DatetimeIndex,
+    *,
+    start: str,
+    end: str,
+    load_start: str,
+    look_back_days: int,
+    provider_uri: str = "",
+    tolerance_days: int = LOOKBACK_COVERAGE_TOLERANCE_DAYS,
+) -> None:
+    """Fail fast when provider calendar cannot cover the configured warmup window."""
+    date_index = pd.DatetimeIndex(pd.to_datetime(list(dates), errors="coerce")).dropna().sort_values()
+    if date_index.empty:
+        raise RuntimeError(
+            f"Qlib provider {provider_uri or '<unknown>'} has no trading calendar rows "
+            f"for requested range {load_start}~{end}."
+        )
+
+    first_date = date_index[0]
+    required = pd.Timestamp(load_start)
+    if first_date > required + pd.Timedelta(days=tolerance_days):
+        gap_days = int((first_date - required).days)
+        raise RuntimeError(
+            f"Qlib provider {provider_uri or '<unknown>'} does not cover data.look_back_days. "
+            f"backtest_start={start}, end={end}, look_back_days={look_back_days}, "
+            f"required_load_start={load_start}, first_available_date={first_date.strftime('%Y-%m-%d')}, "
+            f"calendar_gap_days={gap_days}. Rebuild or sync the provider from required_load_start "
+            "or earlier before running this config."
+        )
 
 
 class BacktestContext:
@@ -58,11 +99,18 @@ class BacktestContext:
             start: 回测起始日期
             end: 回测结束日期
             factor_names: 因子表达式列表（如 ['Ref($close, -5)/$close - 1']）
-            look_back_days: 前瞻天数，用于计算指标（如 MA200）
+            look_back_days: 回看天数，用于计算指标（如 MA200）
         """
-        load_start = start
-        if look_back_days and look_back_days > 0:
-            load_start = (pd.Timestamp(start) - timedelta(days=int(look_back_days))).strftime("%Y-%m-%d")
+        load_start = compute_load_start(start, look_back_days)
+        coverage_dates = self.exchange.get_trading_dates(load_start, end)
+        validate_trading_calendar_coverage(
+            coverage_dates,
+            start=start,
+            end=end,
+            load_start=load_start,
+            look_back_days=look_back_days,
+            provider_uri=getattr(self.exchange, "provider_uri", ""),
+        )
 
         self.exchange.load_quote_data(symbols, load_start, end)
 

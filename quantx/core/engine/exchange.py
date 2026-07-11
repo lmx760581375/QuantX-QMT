@@ -54,9 +54,13 @@ class AStockExchange:
         if self._reader is not None:
             quote = self._reader.features(symbols, fields, start, end)
         else:
-            from qlib.data import D
+            try:
+                from qlib.data import D
 
-            quote = D.features(symbols, fields, start, end, freq="day")
+                quote = D.features(symbols, fields, start, end, freq="day")
+            except Exception as exc:
+                logger.warning("Falling back to built-in qlib bin reader after D.features failed: %s", exc)
+                quote = self._load_with_builtin_reader(symbols, fields, start, end)
         self.quote = self._normalize_quote_index(quote)
 
     @staticmethod
@@ -88,10 +92,19 @@ class AStockExchange:
         if self._reader is not None:
             cal = self._reader.calendar(start, end)
         else:
-            from qlib.data import D
+            try:
+                from qlib.data import D
 
-            cal = D.calendar(start_time=start, end_time=end)
+                cal = D.calendar(start_time=start, end_time=end)
+            except Exception as exc:
+                logger.warning("Falling back to built-in qlib bin calendar after D.calendar failed: %s", exc)
+                self._reader = QlibBinReader(self.provider_uri)
+                cal = self._reader.calendar(start, end)
         return pd.to_datetime(cal).strftime("%Y-%m-%d").tolist()
+
+    def _load_with_builtin_reader(self, symbols: List[str], fields: List[str], start: str, end: str) -> pd.DataFrame:
+        self._reader = QlibBinReader(self.provider_uri)
+        return self._reader.features(symbols, fields, start, end)
 
     def get_deal_price(
         self, symbol: str, date: str, direction: OrderAction = OrderAction.BUY

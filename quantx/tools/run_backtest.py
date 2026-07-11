@@ -15,6 +15,7 @@ import yaml
 
 from quantx.core.engine import BacktestConfig, BacktestEngine, TransactionCost
 from quantx.core.engine.types import OrderAction
+from quantx.core.engine.context import compute_load_start, validate_trading_calendar_coverage
 from quantx.core.analysis import build_run_report, write_run_artifacts
 from quantx.core.strategy.config_strategy import build_formula_strategy, explain_strategy_config
 
@@ -142,6 +143,34 @@ def build_backtest_config(config: Dict[str, Any], cost: TransactionCost) -> Back
     )
 
 
+def validate_backtest_data_coverage(config: BacktestConfig) -> Dict[str, Any]:
+    calendar_path = Path(config.provider_uri) / "calendars" / "day.txt"
+    if not calendar_path.exists():
+        raise FileNotFoundError(f"Missing qlib calendar file: {calendar_path}")
+
+    all_dates = pd.DatetimeIndex(
+        pd.to_datetime(
+            [line.strip() for line in calendar_path.read_text(encoding="utf-8").splitlines() if line.strip()],
+            errors="coerce",
+        )
+    ).dropna().sort_values()
+    load_start = compute_load_start(config.start_date, config.look_back_days)
+    dates = all_dates[(all_dates >= pd.Timestamp(load_start)) & (all_dates <= pd.Timestamp(config.end_date))]
+    validate_trading_calendar_coverage(
+        dates,
+        start=config.start_date,
+        end=config.end_date,
+        load_start=load_start,
+        look_back_days=config.look_back_days,
+        provider_uri=config.provider_uri,
+    )
+    return {
+        "load_start": load_start,
+        "first_available_date": dates[0].strftime("%Y-%m-%d") if len(dates) else None,
+        "calendar_rows": int(len(dates)),
+    }
+
+
 def load_symbols(config: Dict[str, Any], limit: int | None = None) -> List[str]:
     config = resolve_config_dates(config)
     data_cfg = config.get("data") or {}
@@ -199,6 +228,7 @@ def run_config(config_path: str | Path, symbol_limit: int | None = None) -> Dict
     explain_strategy_config(config)
     cost = build_cost(config)
     cfg = build_backtest_config(config, cost)
+    validate_backtest_data_coverage(cfg)
     symbols = load_symbols(config, limit=symbol_limit)
     strategy = build_formula_strategy(config, cost)
     result = BacktestEngine(cfg).run(strategy, symbols)
@@ -215,6 +245,7 @@ def run_config_with_artifacts(
     explain = explain_strategy_config(config)
     cost = build_cost(config)
     cfg = build_backtest_config(config, cost)
+    validate_backtest_data_coverage(cfg)
     symbols = load_symbols(config, limit=symbol_limit)
     strategy = build_formula_strategy(config, cost)
     result = BacktestEngine(cfg).run(strategy, symbols)
@@ -234,6 +265,7 @@ def dry_run_config(config_path: str | Path, symbol_limit: int | None = None) -> 
     config = resolve_config_dates(load_config(config_path))
     cost = build_cost(config)
     backtest_config = build_backtest_config(config, cost)
+    coverage = validate_backtest_data_coverage(backtest_config)
     symbols = load_symbols(config, limit=symbol_limit)
     strategy_explain = explain_strategy_config(config)
     build_formula_strategy(config, cost)
@@ -246,6 +278,9 @@ def dry_run_config(config_path: str | Path, symbol_limit: int | None = None) -> 
             "start": backtest_config.start_date,
             "end": backtest_config.end_date,
             "look_back_days": backtest_config.look_back_days,
+            "load_start": coverage["load_start"],
+            "first_available_date": coverage["first_available_date"],
+            "calendar_rows": coverage["calendar_rows"],
             "symbols": len(symbols),
             "symbol_limit": symbol_limit,
         },
