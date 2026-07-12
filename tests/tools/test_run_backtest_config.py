@@ -49,6 +49,24 @@ def test_load_symbols_supports_mainboard_universe(tmp_path):
     assert load_symbols(config) == ["SH600000", "SZ000001"]
 
 
+def test_load_symbols_supports_named_wufu_etf_universe():
+    config = {
+        "data": {
+            "provider_uri": "data/qlib_data_fixed",
+            "universe": "wufu_etf",
+            "start": "2021-01-01",
+            "end": "2021-12-31",
+        }
+    }
+
+    symbols = load_symbols(config)
+
+    assert "SH518880" in symbols
+    assert "SH513100" in symbols
+    assert "SH511880" in symbols
+    assert len(symbols) == len(set(symbols))
+
+
 def test_load_symbols_excludes_indices_from_all_a(tmp_path):
     provider = tmp_path / "provider"
     instruments = provider / "instruments"

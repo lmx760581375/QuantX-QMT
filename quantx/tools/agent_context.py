@@ -10,8 +10,16 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+import yaml
+
 from quantx.core.analysis.reporting import compute_metrics, load_run_artifacts
-from quantx.core.data import AdjustmentAwareIncrementalUpdater, BaoStockClient, BaostockToQlibConverter, LocalDataRepository
+from quantx.core.data import (
+    AdjustmentAwareIncrementalUpdater,
+    BaoStockClient,
+    BaostockToQlibConverter,
+    LocalDataRepository,
+    QMTClient,
+)
 from quantx.core.data.meta import MetaStore, normalize_symbol
 from quantx.tools.run_backtest import dry_run_config, run_config_with_artifacts
 
@@ -142,18 +150,31 @@ def cmd_data_status(args) -> Dict[str, Any]:
 
 def cmd_data_update(args) -> Dict[str, Any]:
     root = Path(args.root).resolve()
+    source = str(getattr(args, "source", "qmt"))
     provider = Path(args.provider_uri)
     if not provider.is_absolute():
         provider = root / provider
-    raw_dir = Path(args.raw_dir)
+    raw_dir = Path(args.raw_dir or ("data/raw/qmt" if source == "qmt" else "data/raw/baostock"))
     if not raw_dir.is_absolute():
         raw_dir = root / raw_dir
     repository = LocalDataRepository(str(raw_dir))
     converter = BaostockToQlibConverter(qlib_dir=str(provider), csv_dir=str(raw_dir / "stocks"))
+    pause_seconds = args.pause_seconds
+    if pause_seconds is None:
+        pause_seconds = 0.0 if source == "qmt" else 0.5
+    if source == "qmt":
+        def client_factory():
+            return QMTClient(pause_seconds=pause_seconds, max_retries=3)
+    else:
+        def client_factory():
+            return BaoStockClient(
+                pause_seconds=pause_seconds,
+                socket_timeout=args.socket_timeout,
+            )
     updater = AdjustmentAwareIncrementalUpdater(
         repository=repository,
         converter=converter,
-        client_factory=lambda: BaoStockClient(pause_seconds=args.pause_seconds, socket_timeout=args.socket_timeout),
+        client_factory=client_factory,
         overlap_days=args.overlap_days,
         tolerance=args.tolerance,
         full_refresh_start=args.full_refresh_start,
@@ -187,7 +208,13 @@ def cmd_data_update(args) -> Dict[str, Any]:
         dry_run=args.dry_run,
         progress_callback=_progress if progress_every > 0 else None,
     ).to_dict()
-    return {"ok": bool(report.get("ok")), "provider_uri": str(provider), "raw_dir": str(raw_dir), "report": report}
+    return {
+        "ok": bool(report.get("ok")),
+        "source": source,
+        "provider_uri": str(provider),
+        "raw_dir": str(raw_dir),
+        "report": report,
+    }
 
 
 def _load_update_symbols(root: Path, args) -> List[str] | None:
@@ -218,6 +245,102 @@ def cmd_run(args) -> Dict[str, Any]:
         return cmd_validate_config(args)
     summary = run_config_with_artifacts(args.config, args.output_dir, symbol_limit=args.symbol_limit, run_id=args.run_id)
     return {"ok": True, "summary": summary, "run_id": summary.get("run_id"), "run_dir": summary.get("run_dir")}
+
+
+def _project_path(root: Path, value: str) -> Path:
+    path = Path(value).expanduser()
+    path = path.resolve() if path.is_absolute() else (root / path).resolve()
+    if path != root and root not in path.parents:
+        raise ValueError(f"Path escapes project root: {value}")
+    return path
+
+
+def _project_relative(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def cmd_add_to_visualization(args) -> Dict[str, Any]:
+    root = Path(args.root).expanduser().resolve()
+    config_path = _project_path(root, args.config)
+    profile_path = _project_path(root, args.profile)
+    if not config_path.is_file() or config_path.suffix not in {".yaml", ".yml"}:
+        raise FileNotFoundError(f"Strategy config not found: {args.config}")
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or not config.get("name"):
+        raise ValueError(f"Strategy config must define name: {args.config}")
+    if not profile_path.is_file():
+        raise FileNotFoundError(f"Production profile not found: {args.profile}")
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    if not isinstance(profile, dict):
+        raise ValueError(f"Production profile must be a YAML mapping: {args.profile}")
+
+    config_rel = _project_relative(root, config_path)
+    strategies = profile.setdefault("strategies", {})
+    if not isinstance(strategies, dict):
+        raise ValueError("Production profile strategies must be a mapping")
+    includes = strategies.setdefault("include", [])
+    if not isinstance(includes, list):
+        raise ValueError("Production profile strategies.include must be a list")
+    strategy_added = config_rel not in [str(item) for item in includes]
+    if strategy_added:
+        includes.append(config_rel)
+
+    report_added = False
+    report_updated = False
+    report_entry = None
+    if args.run_id:
+        source_run_id = args.run_id.strip().strip("/")
+        run_dir = _project_path(root / "runs", source_run_id)
+        if not run_dir.is_dir() or not (run_dir / "summary.json").is_file():
+            raise FileNotFoundError(f"Backtest run not found or missing summary.json: {args.run_id}")
+        report_id = (args.report_id or Path(source_run_id).name).strip()
+        if not report_id or "/" in report_id or report_id in {".", ".."}:
+            raise ValueError("report-id must be a non-empty single URL path segment")
+        report_entry = {"run_id": report_id}
+        if source_run_id != report_id:
+            report_entry["source_run_id"] = source_run_id
+        if args.title:
+            report_entry["title"] = args.title
+        if args.description:
+            report_entry["description"] = args.description
+
+        reports = profile.setdefault("reports", {})
+        if not isinstance(reports, dict):
+            raise ValueError("Production profile reports must be a mapping")
+        report_includes = reports.setdefault("include", [])
+        if not isinstance(report_includes, list):
+            raise ValueError("Production profile reports.include must be a list")
+        existing_index = next(
+            (
+                index
+                for index, item in enumerate(report_includes)
+                if (isinstance(item, str) and item == report_id)
+                or (isinstance(item, dict) and str(item.get("run_id") or "") == report_id)
+            ),
+            None,
+        )
+        if existing_index is None:
+            report_includes.append(report_entry)
+            report_added = True
+        elif report_includes[existing_index] != report_entry:
+            report_includes[existing_index] = report_entry
+            report_updated = True
+
+    if strategy_added or report_added or report_updated:
+        profile_path.write_text(
+            yaml.safe_dump(profile, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+    return {
+        "ok": True,
+        "profile": _project_relative(root, profile_path),
+        "config": config_rel,
+        "strategy_name": str(config["name"]),
+        "strategy_added": strategy_added,
+        "report_added": report_added,
+        "report_updated": report_updated,
+        "report": report_entry,
+    }
 
 
 def cmd_latest_run(args) -> Dict[str, Any]:
@@ -345,8 +468,9 @@ def build_parser() -> argparse.ArgumentParser:
     data.set_defaults(func=cmd_data_status)
 
     data_update = sub.add_parser("data-update")
+    data_update.add_argument("--source", default="qmt", choices=["qmt", "baostock"])
     data_update.add_argument("--provider-uri", default=DEFAULT_PROVIDER)
-    data_update.add_argument("--raw-dir", default="data/raw/baostock")
+    data_update.add_argument("--raw-dir")
     data_update.add_argument("--symbols", nargs="*")
     data_update.add_argument("--symbol-file")
     data_update.add_argument("--limit", type=int)
@@ -354,7 +478,7 @@ def build_parser() -> argparse.ArgumentParser:
     data_update.add_argument("--overlap-days", type=int, default=40)
     data_update.add_argument("--tolerance", type=float, default=1e-4)
     data_update.add_argument("--full-refresh-start", default="2010-01-01")
-    data_update.add_argument("--pause-seconds", type=float, default=0.5)
+    data_update.add_argument("--pause-seconds", type=float)
     data_update.add_argument("--socket-timeout", type=float, default=30.0)
     data_update.add_argument("--max-requests", type=int, default=45000)
     data_update.add_argument("--progress-every", type=int, default=1)
@@ -378,6 +502,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--run-id")
     run.add_argument("--dry-run", action="store_true")
     run.set_defaults(func=cmd_run)
+
+    visualize = sub.add_parser("add-to-visualization")
+    visualize.add_argument("--config", required=True)
+    visualize.add_argument("--run-id")
+    visualize.add_argument("--report-id")
+    visualize.add_argument("--title")
+    visualize.add_argument("--description")
+    visualize.add_argument("--profile", default="configs/production/daily_default.yaml")
+    visualize.set_defaults(func=cmd_add_to_visualization)
 
     sub.add_parser("latest-run").set_defaults(func=cmd_latest_run)
 

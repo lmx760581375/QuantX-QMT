@@ -20,7 +20,7 @@ from quantx.core.analysis.patterns.dataset import build_pattern_analysis
 from quantx.core.analysis.patterns.io import read_json, read_table
 from quantx.core.data.meta import MetaStore
 from quantx.core.engine.exchange import AStockExchange
-from quantx.core.strategy.config_strategy import build_formula_strategy, explain_strategy_config
+from quantx.core.strategy.factory import build_strategy, explain_strategy
 from quantx.tools.run_backtest import build_cost, load_config, run_config_with_artifacts
 
 
@@ -257,8 +257,8 @@ class ConfigService:
             if not isinstance(config, dict):
                 raise ValueError("Config must be a YAML mapping")
             cost = build_cost(config)
-            build_formula_strategy(config, cost)
-            explain = explain_strategy_config(config)
+            build_strategy(config, cost)
+            explain = explain_strategy(config)
             return {
                 "ok": True,
                 "name": config.get("name"),
@@ -299,16 +299,13 @@ class ReportService:
 
     def list_reports(self) -> List[Dict[str, Any]]:
         rows = []
-        for run_dir in sorted(self.root.iterdir(), reverse=True):
-            if not run_dir.is_dir():
-                continue
+        for run_id, run_dir in self._report_run_dirs():
             summary_path = run_dir / "summary.json"
-            if not summary_path.exists():
-                continue
             try:
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
             except Exception:
                 continue
+            summary["run_id"] = run_id
             metrics = self._metrics_from_run_dir(run_dir)
             self._merge_list_metrics(summary, metrics)
             if not summary.get("description"):
@@ -317,7 +314,7 @@ class ReportService:
             if not self._is_profile_report(summary, config):
                 continue
             profile_config = self._profile_config_for_report(summary, config)
-            profile_report = self._profile_report_for_report(run_dir.name, summary, config)
+            profile_report = self._profile_report_for_report(run_id, summary, config)
             if profile_report:
                 if profile_report.get("description"):
                     summary["description"] = str(profile_report["description"])
@@ -325,18 +322,53 @@ class ReportService:
                     if profile_report.get(key):
                         summary[key] = profile_report[key]
             config = profile_config or profile_report or config
-            title = _infer_report_display_title(summary, run_dir.name, config, prefer_config=profile_config is not None)
+            report_has_title = bool(profile_report and (profile_report.get("display_title") or profile_report.get("title")))
+            title = _infer_report_display_title(
+                summary,
+                run_id,
+                config,
+                prefer_config=profile_config is not None and not report_has_title,
+            )
             summary["display_title"] = title
             summary["title"] = title
             rows.append({
                 **summary,
                 "run_dir": str(run_dir),
-                "run_id": run_dir.name,
+                "run_id": run_id,
                 "_profile_report_included": profile_report is not None,
                 "updated_at": datetime.fromtimestamp(run_dir.stat().st_mtime).isoformat(timespec="seconds"),
                 "_mtime": run_dir.stat().st_mtime,
             })
         return self._latest_reports_by_strategy(rows)
+
+    def _report_run_dirs(self) -> List[tuple[str, Path]]:
+        runs: List[tuple[str, Path]] = []
+        seen: set[str] = set()
+        for run_dir in sorted(self.root.iterdir(), reverse=True):
+            if run_dir.is_dir() and (run_dir / "summary.json").exists():
+                runs.append((run_dir.name, run_dir))
+                seen.add(run_dir.name)
+        for entry in _profile_report_entries(self.production_profile):
+            run_id = str(entry.get("run_id") or "").strip()
+            if not run_id or run_id in seen:
+                continue
+            source_run_id = str(entry.get("source_run_id") or run_id).strip()
+            try:
+                run_dir = _safe_child(self.root, source_run_id)
+            except ValueError:
+                continue
+            if run_dir.is_dir() and (run_dir / "summary.json").exists():
+                runs.append((run_id, run_dir))
+                seen.add(run_id)
+        return runs
+
+    def _resolve_run_dir(self, run_id: str) -> Path:
+        source_run_id = run_id
+        for entry in _profile_report_entries(self.production_profile):
+            if str(entry.get("run_id") or "").strip() == run_id:
+                source_run_id = str(entry.get("source_run_id") or run_id).strip()
+                break
+        return _safe_child(self.root, source_run_id)
 
     @staticmethod
     def _latest_reports_by_strategy(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -359,7 +391,7 @@ class ReportService:
         return sorted(result, key=_report_sort_key, reverse=True)
 
     def read_report(self, run_id: str) -> Dict[str, Any]:
-        run_dir = _safe_child(self.root, run_id)
+        run_dir = self._resolve_run_dir(run_id)
         if not run_dir.is_dir():
             raise FileNotFoundError(f"Run not found: {run_id}")
         data = load_run_artifacts(run_dir)
@@ -493,7 +525,7 @@ class ReportService:
     ) -> Dict[str, Any] | None:
         name = str(summary.get("name") or config.get("name") or "")
         report_map = self._profile_report_map()
-        return report_map.get(str(summary.get("run_id") or run_id)) or report_map.get(name)
+        return report_map.get(run_id) or report_map.get(str(summary.get("run_id") or "")) or report_map.get(name)
 
     def _config_description_map(self) -> Dict[str, str]:
         if not self.config_root.exists():
@@ -538,11 +570,12 @@ class ReportService:
                 if profile_report.get(key):
                     summary[key] = profile_report[key]
         config = profile_config or profile_report or config
+        report_has_title = bool(profile_report and (profile_report.get("display_title") or profile_report.get("title")))
         title = _infer_report_display_title(
             summary,
             str(data.get("run_id") or ""),
             config,
-            prefer_config=profile_config is not None,
+            prefer_config=profile_config is not None and not report_has_title,
         )
         summary["display_title"] = title
         summary["title"] = title
@@ -668,7 +701,7 @@ class ReportService:
         }
         if artifact not in allowed:
             raise ValueError(f"Unsupported artifact: {artifact}")
-        run_dir = _safe_child(self.root, run_id)
+        run_dir = self._resolve_run_dir(run_id)
         return json.loads((run_dir / allowed[artifact]).read_text(encoding="utf-8"))
 
     def read_symbol_detail(self, run_id: str, symbol: str) -> Dict[str, Any]:

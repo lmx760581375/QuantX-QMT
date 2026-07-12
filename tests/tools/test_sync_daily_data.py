@@ -1,6 +1,30 @@
 """sync_daily_data CLI tests."""
 
+from types import SimpleNamespace
+
 from quantx.tools import sync_daily_data
+
+
+def test_load_symbols_from_standard_strategy_config(tmp_path):
+    config = tmp_path / "strategy.yaml"
+    config.write_text(
+        "data:\n"
+        "  provider_uri: data/qlib_data_fixed\n"
+        "  universe: wufu_etf\n"
+        "  start: 2016-01-04\n"
+        "  end: latest\n",
+        encoding="utf-8",
+    )
+
+    symbols = sync_daily_data._load_symbols(SimpleNamespace(
+        strategy_config=str(config),
+        symbols=None,
+        symbol_file=None,
+    ))
+
+    assert symbols is not None
+    assert "SH518880" in symbols
+    assert "SH511880" in symbols
 
 
 def test_sync_daily_data_cli_wires_adjustment_aware_updater(monkeypatch, tmp_path, capsys):

@@ -251,6 +251,7 @@ class BaostockToQlibConverter:
             result[f"${field}"] = pd.to_numeric(df[field], errors="coerce")
 
         amount = pd.to_numeric(df["amount"], errors="coerce")
+        result["$amount"] = amount
         volume = pd.to_numeric(df["volume"], errors="coerce")
         close = pd.to_numeric(df["close"], errors="coerce")
         result["$vwap"] = np.where(volume > 0, amount / (volume * 100), close)
@@ -367,7 +368,7 @@ class BaostockToQlibConverter:
         features_dir.mkdir(parents=True, exist_ok=True)
 
         date_to_idx = {d: i for i, d in enumerate(calendar_list)}
-        fields = ["$open", "$high", "$low", "$close", "$volume", "$vwap", "$factor", "$change"]
+        fields = ["$open", "$high", "$low", "$close", "$volume", "$amount", "$vwap", "$factor", "$change"]
 
         total_symbols = len(all_data)
         for idx, (symbol, df) in enumerate(all_data.items(), start=1):

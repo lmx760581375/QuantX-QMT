@@ -17,7 +17,7 @@ from quantx.core.engine import BacktestConfig, BacktestEngine, TransactionCost
 from quantx.core.engine.types import OrderAction
 from quantx.core.engine.context import compute_load_start, validate_trading_calendar_coverage
 from quantx.core.analysis import build_run_report, write_run_artifacts
-from quantx.core.strategy.config_strategy import build_formula_strategy, explain_strategy_config
+from quantx.core.strategy.factory import build_strategy, explain_strategy
 
 
 def load_config(path: str | Path) -> Dict[str, Any]:
@@ -177,6 +177,11 @@ def load_symbols(config: Dict[str, Any], limit: int | None = None) -> List[str]:
     universe = data_cfg.get("universe", "all_a")
     if isinstance(universe, list):
         return [str(sym) for sym in universe[:limit]]
+    if universe == "wufu_etf":
+        from quantx.strategies.universe_presets import wufu_etf_symbols
+
+        symbols = wufu_etf_symbols()
+        return symbols[:limit] if limit is not None else symbols
     if universe not in {"all_a", "all_mainboard"}:
         raise ValueError(f"Unsupported data.universe: {universe}")
     return load_a_share_symbols(
@@ -225,12 +230,12 @@ def summarize(result, symbols: Iterable[str], config: Dict[str, Any]) -> Dict[st
 
 def run_config(config_path: str | Path, symbol_limit: int | None = None) -> Dict[str, Any]:
     config = resolve_config_dates(load_config(config_path))
-    explain_strategy_config(config)
+    explain_strategy(config)
     cost = build_cost(config)
     cfg = build_backtest_config(config, cost)
     validate_backtest_data_coverage(cfg)
     symbols = load_symbols(config, limit=symbol_limit)
-    strategy = build_formula_strategy(config, cost)
+    strategy = build_strategy(config, cost)
     result = BacktestEngine(cfg).run(strategy, symbols)
     return summarize(result, symbols, config)
 
@@ -242,12 +247,12 @@ def run_config_with_artifacts(
     run_id: str | None = None,
 ) -> Dict[str, Any]:
     config = resolve_config_dates(load_config(config_path))
-    explain = explain_strategy_config(config)
+    explain = explain_strategy(config)
     cost = build_cost(config)
     cfg = build_backtest_config(config, cost)
     validate_backtest_data_coverage(cfg)
     symbols = load_symbols(config, limit=symbol_limit)
-    strategy = build_formula_strategy(config, cost)
+    strategy = build_strategy(config, cost)
     result = BacktestEngine(cfg).run(strategy, symbols)
     run_id = run_id or _make_run_id(config)
     report = build_run_report(result, config, symbols, run_id)
@@ -267,8 +272,8 @@ def dry_run_config(config_path: str | Path, symbol_limit: int | None = None) -> 
     backtest_config = build_backtest_config(config, cost)
     coverage = validate_backtest_data_coverage(backtest_config)
     symbols = load_symbols(config, limit=symbol_limit)
-    strategy_explain = explain_strategy_config(config)
-    build_formula_strategy(config, cost)
+    strategy_explain = explain_strategy(config)
+    build_strategy(config, cost)
     return {
         "ok": True,
         "config": str(config_path),

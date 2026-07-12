@@ -1,7 +1,6 @@
 """Server service tests."""
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -382,6 +381,57 @@ def test_report_service_allows_profile_report_include_for_custom_run(tmp_path):
     assert wufu["summary"]["description"] == "五福 ETF 全池复刻"
 
 
+def test_report_service_resolves_profile_alias_to_nested_run(tmp_path):
+    runs_root = tmp_path / "runs"
+    run_dir = runs_root / "batch" / "source_run"
+    run_dir.mkdir(parents=True)
+    _write_json(run_dir / "summary.json", {
+        "run_id": "source_run",
+        "name": "demo_strategy",
+        "start_date": "2021-01-04",
+        "end_date": "2021-01-06",
+        "total_return": 0.5,
+    })
+    _write_json(run_dir / "metrics.json", {"total_return": 0.5, "trade_count": 2})
+    _write_json(run_dir / "daily_nav.json", [])
+    _write_json(run_dir / "trades.json", [])
+    _write_json(run_dir / "positions.json", [])
+    _write_json(run_dir / "closed_positions.json", [])
+    _write_json(run_dir / "explain.json", {"config": {"name": "demo_strategy"}})
+    config_root = tmp_path / "strategies"
+    config_root.mkdir()
+    config = config_root / "demo.yaml"
+    config.write_text("name: demo_strategy\ntitle: 普通示例\n", encoding="utf-8")
+    profile = tmp_path / "daily_default.yaml"
+    profile.write_text(
+        "strategies:\n"
+        "  include:\n"
+        f"    - {config}\n"
+        "reports:\n"
+        "  include:\n"
+        "    - run_id: best_demo\n"
+        "      source_run_id: batch/source_run\n"
+        "      title: 最强示例\n",
+        encoding="utf-8",
+    )
+    service = services.ReportService(
+        root=runs_root,
+        meta_store=MetaStore(tmp_path / "meta.sqlite"),
+        config_root=config_root,
+        production_profile=profile,
+    )
+
+    reports = service.list_reports()
+    report = service.read_report("best_demo")
+    metrics = service.read_artifact("best_demo", "metrics")
+
+    assert [row["run_id"] for row in reports] == ["best_demo"]
+    assert reports[0]["display_title"] == "最强示例"
+    assert report["run_id"] == "best_demo"
+    assert report["summary"]["display_title"] == "最强示例"
+    assert metrics["total_return"] == pytest.approx(0.5)
+
+
 def test_report_service_keeps_multiple_explicit_profile_reports_with_same_name(tmp_path):
     runs_root = tmp_path / "runs"
     runs_root.mkdir()
@@ -514,6 +564,10 @@ def test_report_service_symbol_detail_returns_bars_and_bs_points(tmp_path, monke
     meta_store = MetaStore(tmp_path / "meta.sqlite")
     meta_store.upsert_security_master(pd.DataFrame([{"symbol": "SZ000001", "name": "平安银行"}]))
     meta_store.upsert_industry_membership(pd.DataFrame([{"symbol": "SZ000001", "industry_name": "银行"}]))
+    meta_store.upsert_sector_membership(pd.DataFrame([
+        {"symbol": "SZ000001", "sector_type": "concept", "sector_name": "跨境支付"},
+        {"symbol": "SZ000001", "sector_type": "concept", "sector_name": "互联金融"},
+    ]))
     service = services.ReportService(root=tmp_path, meta_store=meta_store)
 
     detail = service.read_symbol_detail("unit_run", "SZ000001")
@@ -521,6 +575,7 @@ def test_report_service_symbol_detail_returns_bars_and_bs_points(tmp_path, monke
     assert detail["symbol"] == "SZ000001"
     assert detail["name"] == "平安银行"
     assert detail["meta"]["industry_name"] == "银行"
+    assert set(detail["meta"]["concept_names"].split("|")) == {"跨境支付", "互联金融"}
     assert len(detail["bars"]) == 3
     assert [trade["action"] for trade in detail["trades"]] == ["BUY", "SELL"]
     assert detail["round_trips"][0]["return"] == pytest.approx(0.2)

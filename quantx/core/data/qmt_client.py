@@ -1,14 +1,18 @@
-"""QMT xtdata adapter for QuantX data ingestion."""
+"""QMT xtdata adapter backed by a remote xqshare service."""
 
 from __future__ import annotations
 
 import logging
+import os
 import time
-from typing import Iterable, List, Optional
+from pathlib import Path
+from typing import Iterable, List, Literal, Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_XQSHARE_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 QMT_FIELD_RENAME_MAP = {
     "preClose": "preclose",
@@ -18,7 +22,7 @@ QMT_FIELD_RENAME_MAP = {
 
 
 class QMTClient:
-    """Thin wrapper around the installed ``xtquant.xtdata`` package."""
+    """Thin wrapper around ``xtquant.xtdata`` exposed through xqshare."""
 
     DEFAULT_SECTORS = ["沪深A股"]
 
@@ -28,18 +32,28 @@ class QMTClient:
         fill_data: bool = True,
         pause_seconds: float = 0.0,
         max_retries: int = 3,
+        env_file: str | Path | None = None,
     ):
         self.dividend_type = dividend_type
         self.fill_data = bool(fill_data)
         self.pause_seconds = float(pause_seconds)
         self.max_retries = int(max_retries)
+        configured_env_file = env_file or os.environ.get("QUANTX_ENV_FILE") or DEFAULT_XQSHARE_ENV_FILE
+        self.env_file = Path(configured_env_file).expanduser()
+        self._remote = None
         self._xtdata = None
 
     def __enter__(self) -> "QMTClient":
         self._load_xtdata()
         return self
 
-    def __exit__(self, *args) -> bool:
+    def __exit__(self, *args) -> Literal[False]:
+        if self._remote is not None:
+            try:
+                self._remote.close()
+            finally:
+                self._remote = None
+                self._xtdata = None
         return False
 
     @property
@@ -49,13 +63,14 @@ class QMTClient:
     def _load_xtdata(self):
         if self._xtdata is None:
             try:
-                from xtquant import xtdata
+                from xqshare import XtQuantRemote
             except ImportError as exc:
                 raise ImportError(
-                    "QMT data source requires installed xtquant. "
-                    "Activate the Python environment that has xtquant installed."
+                    "QMT data source requires xqshare. Install the project dependencies "
+                    "and configure the remote service in .env."
                 ) from exc
-            self._xtdata = xtdata
+            self._remote = XtQuantRemote(env_file=str(self.env_file))
+            self._xtdata = self._remote.xtdata
         return self._xtdata
 
     def query_history_k_data_with_retry(

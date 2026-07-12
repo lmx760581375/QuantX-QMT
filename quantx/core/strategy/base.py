@@ -72,6 +72,7 @@ class Signal:
     symbol: str
     score: float
     reason: str = ""
+    signal_date: str = ""
 
 
 @dataclass
@@ -157,6 +158,9 @@ class CompositeStrategy:
         return self.selector.act(state)
 
     def get_trade_signal(self, state: PolicyState, selection: StockSelection) -> OrderList:
+        state.extra["signal_dates"] = {
+            signal.symbol: signal.signal_date for signal in selection.signals
+        }
         preview = getattr(self.execution, "preview_sell_symbols", None)
         if callable(preview):
             state.extra["planned_sell_symbols"] = set(preview(state))

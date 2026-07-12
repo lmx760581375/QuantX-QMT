@@ -50,7 +50,7 @@ class AStockExchange:
 
     def load_quote_data(self, symbols: List[str], start: str, end: str) -> None:
         self._init_qlib()
-        fields = ["$open", "$high", "$low", "$close", "$volume", "$change", "$factor", "$vwap"]
+        fields = ["$open", "$high", "$low", "$close", "$volume", "$amount", "$change", "$factor", "$vwap"]
         if self._reader is not None:
             quote = self._reader.features(symbols, fields, start, end)
         else:

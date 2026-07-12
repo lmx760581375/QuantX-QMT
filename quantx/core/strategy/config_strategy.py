@@ -111,7 +111,7 @@ WATCHLIST_RULE_NAMES = {
     "setup_score",
 }
 
-DEFAULT_FIELD_NAMES = {"open", "high", "low", "close", "volume", "vwap", "change"}
+DEFAULT_FIELD_NAMES = {"open", "high", "low", "close", "volume", "amount", "vwap", "change"}
 DEFAULT_INDUSTRY_CSV = Path("data/meta/snapshots/industry_membership.csv")
 DEFAULT_SECTOR_CSV = Path("data/meta/snapshots/sector_membership.csv")
 
@@ -416,7 +416,7 @@ def _validate_execution_config(
             f"execution.deal_price references unknown field or formula: {deal_price}"
         )
     buy_cfg = execution_cfg.get("buy") or {}
-    if buy_cfg.get("sizing", "cash_equal") != "cash_equal":
+    if buy_cfg.get("sizing", "cash_equal") not in {"cash_equal", "slot_equal"}:
         raise ConfigStrategyError(f"Unsupported buy.sizing: {buy_cfg.get('sizing')}")
     evaluator = ScalarRuleEvaluator()
     scalar_sources = set(formulas) | available_fields | STATEFUL_RULE_NAMES
@@ -561,7 +561,12 @@ class FormulaSelector(StockSelector):
         section, raw_selected, sorted_selected, selected = self._candidate_frames(runtime, signal_date)
 
         signals = [
-            Signal(symbol=str(symbol), score=_safe_float(row[self.score_name]), reason=self.reason)
+            Signal(
+                symbol=str(symbol),
+                score=_safe_float(row[self.score_name]),
+                reason=self.reason,
+                signal_date=signal_date,
+            )
             for symbol, row in selected.iterrows()
         ]
         self._record_candidates(state, signal_date, section, raw_selected, sorted_selected, selected)
@@ -775,22 +780,27 @@ class WatchlistFormulaSelector(StockSelector):
         if current_idx is None:
             self._record_candidates(state, None, [], [], 0, 0)
             return StockSelection(signals=[])
+        signal_idx = current_idx - self.lag
+        if signal_idx < 0:
+            self._record_candidates(state, None, [], [], 0, 0)
+            return StockSelection(signals=[])
+        signal_date = dates[signal_idx]
 
         self._add_setups(runtime, dates, current_idx)
-        expired = self._drop_expired(current_idx)
+        expired = self._drop_expired(signal_idx)
 
         if not self._watchlist:
-            self._record_candidates(state, None, [], [], 0, expired)
+            self._record_candidates(state, signal_date, [], [], 0, expired)
             return StockSelection(signals=[])
 
         factor_names = self._confirm_factor_names(runtime)
-        section = runtime.get_cross_section([self.score_name, *factor_names], state.date)
+        section = runtime.get_cross_section([self.score_name, *factor_names], signal_date)
         rows = []
         for symbol, item in self._watchlist.items():
-            age = current_idx - int(item["setup_idx"])
+            age = signal_idx - int(item["setup_idx"])
             if age < self.min_age or age > self.max_age or symbol not in section.index:
                 continue
-            values = self._confirm_values(runtime, section, state.date, symbol, item, age)
+            values = self._confirm_values(runtime, section, signal_date, symbol, item, age)
             if not bool(self.evaluator.evaluate(self.confirm_expr, values)):
                 continue
             rows.append({
@@ -809,9 +819,14 @@ class WatchlistFormulaSelector(StockSelector):
             for row in selected_rows:
                 self._watchlist.pop(row["symbol"], None)
 
-        self._record_candidates(state, state.date, rows, selected_rows, len(self._watchlist), expired)
+        self._record_candidates(state, signal_date, rows, selected_rows, len(self._watchlist), expired)
         return StockSelection(signals=[
-            Signal(symbol=row["symbol"], score=row["score"], reason=self.reason)
+            Signal(
+                symbol=row["symbol"],
+                score=row["score"],
+                reason=self.reason,
+                signal_date=signal_date,
+            )
             for row in selected_rows
         ])
 
@@ -968,10 +983,12 @@ class EqualWeightRebalance(RebalanceStrategy):
         buy_only_new_positions: bool = True,
         max_positions_rules: Sequence[PositionLimitRule | Dict[str, Any]] | None = None,
         rank_weights: Sequence[float] | None = None,
+        slot_weights: bool = False,
     ):
         self.max_positions = int(max_positions)
         self.buy_only_new_positions = bool(buy_only_new_positions)
         self.rank_weights = [float(value) for value in (rank_weights or [])]
+        self.slot_weights = bool(slot_weights)
         if any(value < 0 for value in self.rank_weights):
             raise ConfigStrategyError("rebalance.rank_weights must be non-negative")
         self.max_positions_rules = [
@@ -995,6 +1012,12 @@ class EqualWeightRebalance(RebalanceStrategy):
         planned_sell_symbols = set(state.extra.get("planned_sell_symbols", set()))
         current_holdings_for_slots = current_holdings - planned_sell_symbols
         max_positions = self._max_positions_for_state(state)
+        state.extra["available_new_slots_without_sells"] = max(
+            0, max_positions - len(current_holdings)
+        )
+        state.extra["slot_releasing_sells"] = sorted(
+            current_holdings & planned_sell_symbols
+        )
         if self.buy_only_new_positions:
             available_slots = max(0, max_positions - len(current_holdings_for_slots))
             if available_slots <= 0:
@@ -1021,12 +1044,21 @@ class EqualWeightRebalance(RebalanceStrategy):
         if count <= 0:
             return []
         if not self.rank_weights:
-            return [1.0 / count] * count
+            denominator = self.max_positions if self.slot_weights else count
+            return [1.0 / denominator] * count
         raw = [
             self.rank_weights[idx] if idx < len(self.rank_weights) else self.rank_weights[-1]
             for idx in range(count)
         ]
-        total = sum(raw)
+        if self.slot_weights:
+            total = sum(
+                self.rank_weights[idx]
+                if idx < len(self.rank_weights)
+                else self.rank_weights[-1]
+                for idx in range(self.max_positions)
+            )
+        else:
+            total = sum(raw)
         if total <= 0:
             return [1.0 / count] * count
         return [value / total for value in raw]
@@ -1044,15 +1076,11 @@ class EqualWeightRebalance(RebalanceStrategy):
 
     def _rule_values(self, state: PolicyState) -> Dict[str, Any]:
         values: Dict[str, Any] = {}
-        if state.market_data is not None and not getattr(state.market_data, "empty", True):
-            for key in state.market_data.columns:
-                clean_key = str(key).lstrip("$")
-                values[clean_key] = _safe_float(pd.to_numeric(state.market_data[key], errors="coerce").mean())
-
         runtime = getattr(state.context, "factor_runtime", None) if state.context is not None else None
         factor_names = [name for name in self.rule_names if runtime is not None and name in runtime.values]
-        if factor_names:
-            factors = self._factor_section(runtime, state.date, factor_names)
+        decision_date = _prior_trade_date(state)
+        if factor_names and decision_date:
+            factors = self._factor_section(runtime, decision_date, factor_names)
             for name in factor_names:
                 values[name] = _first_numeric_value(factors[name])
 
@@ -1113,6 +1141,7 @@ class RuleExecution(ExecutionStrategy):
             if name.startswith("entry_") and len(name) > len("entry_")
         }
         self._factor_cache: Dict[str, pd.DataFrame] = {}
+        self._previewed_sell_decisions: tuple[str, list] | None = None
 
     def prepare(self, context):
         field = f"${self.deal_price.lstrip('$')}"
@@ -1147,7 +1176,13 @@ class RuleExecution(ExecutionStrategy):
         orders: List[Order] = []
         date = state.date
 
-        for sym, pos, cur_price, reason, quantity, is_full_exit in self._iter_sell_decisions(state):
+        if self._previewed_sell_decisions is not None and self._previewed_sell_decisions[0] == date:
+            sell_decisions = self._previewed_sell_decisions[1]
+        else:
+            sell_decisions = list(self._iter_sell_decisions(state))
+        self._previewed_sell_decisions = None
+
+        for sym, pos, cur_price, reason, quantity, is_full_exit in sell_decisions:
             if reason:
                 orders.append(Order(
                     symbol=sym,
@@ -1182,7 +1217,7 @@ class RuleExecution(ExecutionStrategy):
                 add_existing_symbols.add(sym)
         if not buyable:
             return OrderList(orders=orders)
-        if self.sizing != "cash_equal":
+        if self.sizing not in {"cash_equal", "slot_equal"}:
             raise ConfigStrategyError(f"Unsupported buy sizing: {self.sizing}")
         if state.account is None:
             return OrderList(orders=orders)
@@ -1203,6 +1238,9 @@ class RuleExecution(ExecutionStrategy):
             raw_weights = {sym: 1.0 for sym in buyable}
             total_weight = float(len(buyable))
 
+        free_slots = int(state.extra.get("available_new_slots_without_sells", len(buyable)))
+        slot_releasing_sells = list(state.extra.get("slot_releasing_sells", []))
+        new_buy_order_count = 0
         for sym in buyable:
             price = self._get_price(state, sym)
             if price is None or price <= 0:
@@ -1211,10 +1249,21 @@ class RuleExecution(ExecutionStrategy):
                 continue
             if self.skip_limit_up and self._is_limit_up(state, sym):
                 continue
-            cash_per_stock = cash_base * self.cash_use_ratio * raw_weights[sym] / total_weight
+            if self.sizing == "slot_equal":
+                cash_per_stock = min(
+                    cash_base * raw_weights[sym] / total_weight,
+                    state.account.total_value * self.cash_use_ratio * raw_weights[sym],
+                )
+            else:
+                cash_per_stock = cash_base * self.cash_use_ratio * raw_weights[sym] / total_weight
             qty = int(cash_per_stock / price)
             qty = (qty // self.lot_size) * self.lot_size
             if qty > 0:
+                depends_on_sells: List[str] = []
+                if sym not in state.positions and new_buy_order_count >= free_slots:
+                    dependency_index = new_buy_order_count - free_slots
+                    if dependency_index < len(slot_releasing_sells):
+                        depends_on_sells = [slot_releasing_sells[dependency_index]]
                 orders.append(Order(
                     symbol=sym,
                     action=OrderAction.BUY,
@@ -1223,7 +1272,10 @@ class RuleExecution(ExecutionStrategy):
                     date=date,
                     reason="config_buy",
                     context=self._entry_context(state, sym),
+                    depends_on_sells=depends_on_sells,
                 ))
+                if sym not in state.positions:
+                    new_buy_order_count += 1
 
         return OrderList(orders=orders)
 
@@ -1241,18 +1293,11 @@ class RuleExecution(ExecutionStrategy):
 
     def _buy_rule_values(self, state: PolicyState, symbol: str, price: float) -> Dict[str, Any]:
         values: Dict[str, Any] = {}
-        if state.market_data is not None and not getattr(state.market_data, "empty", True):
-            try:
-                row = state.market_data.loc[symbol]
-                for key, value in row.items():
-                    values[str(key).lstrip("$")] = value
-            except Exception:
-                pass
-
         runtime = getattr(state.context, "factor_runtime", None) if state.context is not None else None
         factor_names = [name for name in self.buy_rule_names if runtime is not None and name in runtime.values]
-        if factor_names:
-            factors = self._factor_section(runtime, state.date, factor_names)
+        decision_date = self._decision_date(state, symbol)
+        if factor_names and decision_date:
+            factors = self._factor_section(runtime, decision_date, factor_names)
             if symbol in factors.index:
                 values.update(factors.loc[symbol].to_dict())
 
@@ -1313,8 +1358,10 @@ class RuleExecution(ExecutionStrategy):
         return values
 
     def preview_sell_symbols(self, state: PolicyState) -> List[str]:
+        decisions = list(self._iter_sell_decisions(state))
+        self._previewed_sell_decisions = (state.date, decisions)
         return [
-            sym for sym, _, _, reason, _, is_full_exit in self._iter_sell_decisions(state)
+            sym for sym, _, _, reason, _, is_full_exit in decisions
             if reason and is_full_exit
         ]
 
@@ -1345,19 +1392,11 @@ class RuleExecution(ExecutionStrategy):
     def _rule_values(self, state: PolicyState, symbol: str, pos, cur_price: float) -> Dict[str, Any]:
         values: Dict[str, Any] = {}
 
-        if state.market_data is not None and not getattr(state.market_data, "empty", True):
-            try:
-                row = state.market_data.loc[symbol]
-                for key, value in row.items():
-                    clean_key = str(key).lstrip("$")
-                    values[clean_key] = value
-            except Exception:
-                pass
-
         runtime = getattr(state.context, "factor_runtime", None) if state.context is not None else None
         factor_names = [name for name in self.rule_names if runtime is not None and name in runtime.values]
-        if factor_names:
-            factors = self._factor_section(runtime, state.date, factor_names)
+        decision_date = self._decision_date(state)
+        if factor_names and decision_date:
+            factors = self._factor_section(runtime, decision_date, factor_names)
             if symbol in factors.index:
                 values.update(factors.loc[symbol].to_dict())
 
@@ -1390,24 +1429,25 @@ class RuleExecution(ExecutionStrategy):
         if not self.entry_snapshot_names:
             return {}
         values: Dict[str, Any] = {}
-        if state.market_data is not None and not getattr(state.market_data, "empty", True):
-            try:
-                row = state.market_data.loc[symbol]
-                for key, value in row.items():
-                    clean_key = str(key).lstrip("$")
-                    if clean_key in self.entry_snapshot_names:
-                        values[f"entry_{clean_key}"] = value
-            except Exception:
-                pass
-
         runtime = getattr(state.context, "factor_runtime", None) if state.context is not None else None
         factor_names = [name for name in self.entry_snapshot_names if runtime is not None and name in runtime.values]
-        if factor_names:
-            factors = self._factor_section(runtime, state.date, factor_names)
+        decision_date = self._decision_date(state, symbol)
+        if factor_names and decision_date:
+            factors = self._factor_section(runtime, decision_date, factor_names)
             if symbol in factors.index:
                 for key, value in factors.loc[symbol].to_dict().items():
                     values[f"entry_{key}"] = value
+        if decision_date:
+            values["signal_date"] = decision_date
         return values
+
+    @staticmethod
+    def _decision_date(state: PolicyState, symbol: str | None = None) -> str | None:
+        if symbol:
+            signal_date = (state.extra.get("signal_dates") or {}).get(symbol)
+            if signal_date:
+                return str(signal_date)
+        return _prior_trade_date(state)
 
     def _position_context_values(self, pos) -> Dict[str, Any]:
         context = dict(getattr(pos, "context", {}) or {})
@@ -1436,10 +1476,16 @@ class RuleExecution(ExecutionStrategy):
         return self._factor_cache[key]
 
     def _get_price(self, state: PolicyState, symbol: str) -> Optional[float]:
+        field = f"${self.deal_price.lstrip('$')}"
+        if state.market_data is not None and not getattr(state.market_data, "empty", True):
+            try:
+                price = state.market_data.at[symbol, field]
+                return float(price) if not pd.isna(price) else None
+            except (KeyError, TypeError, ValueError):
+                pass
         if state.context is None or state.context.exchange.quote is None:
             return None
         try:
-            field = f"${self.deal_price.lstrip('$')}"
             price = state.context.exchange.quote.loc[(pd.Timestamp(state.date), symbol), field]
             return float(price) if not pd.isna(price) else None
         except Exception:
@@ -1518,6 +1564,7 @@ def build_formula_strategy(config: Dict[str, Any], cost: TransactionCost) -> Com
         buy_only_new_positions=rebalance_cfg.get("buy_only_new_positions", True),
         max_positions_rules=rebalance_cfg.get("max_positions_rules") or [],
         rank_weights=rebalance_cfg.get("rank_weights") or [],
+        slot_weights=buy_cfg.get("sizing", "cash_equal") == "slot_equal",
     )
     execution = RuleExecution(
         sell_rules=execution_cfg.get("sell_rules") or [],
@@ -1545,6 +1592,15 @@ def _to_bool_series(series: pd.Series) -> pd.Series:
         return series.fillna(False).astype(bool)
     numeric = pd.to_numeric(series, errors="coerce").fillna(0)
     return numeric != 0
+
+
+def _prior_trade_date(state: PolicyState) -> str | None:
+    dates = list(getattr(state.context, "trade_dates", [])) if state.context is not None else []
+    try:
+        current_idx = dates.index(state.date)
+    except ValueError:
+        return None
+    return dates[current_idx - 1] if current_idx > 0 else None
 
 
 def _safe_float(value: Any) -> float:

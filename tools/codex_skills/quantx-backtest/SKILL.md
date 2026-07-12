@@ -1,6 +1,6 @@
 ---
 name: quantx-backtest
-description: Use when working with the QuantX project to write, validate, or modify YAML strategy configs; run dry-run or full backtests; incrementally update BaoStock/Qlib market data; inspect returns, metrics, trades, reports, and per-symbol K-line trade details; diagnose QuantX strategy/result differences such as Shuijiao alignment; update local metadata; operate the QuantX web workspace; or add agent-facing analysis metrics.
+description: Use when working with the QuantX project to write, validate, or modify YAML strategy configs; run dry-run or full backtests; incrementally update QMT/xqshare market data into the shared Qlib provider; inspect returns, metrics, trades, reports, and per-symbol K-line trade details; diagnose QuantX strategy/result differences such as Shuijiao alignment; update local metadata; operate the QuantX web workspace; or add agent-facing analysis metrics.
 ---
 
 # QuantX Backtest
@@ -95,10 +95,13 @@ conda run -n test python -m quantx.tools.agent_context data-update --dry-run --l
 conda run -n test python -m quantx.tools.agent_context meta --symbols SH600000 SH600137
 conda run -n test python -m quantx.tools.agent_context validate-config --config <path>
 conda run -n test python -m quantx.tools.agent_context run --config <path> --dry-run
+conda run -n test python -m quantx.tools.agent_context add-to-visualization --config <path> --run-id <run-id> --title <title>
 conda run -n test python -m quantx.tools.agent_context report --run-id latest
 conda run -n test python -m quantx.tools.agent_context symbol --run-id latest --symbol SH600137
 conda run -n test python -m quantx.tools.agent_context metrics-compute --run-id latest --include sharpe sortino calmar
 ```
+
+`add-to-visualization` registers an existing strategy in the production web workspace. Pass `--run-id` to expose an existing backtest, and use `--report-id` when the run is nested under a batch directory so the UI receives a stable URL-safe id.
 
 For data updates, prefer the bundled wrappers when an Agent needs a repeatable command:
 

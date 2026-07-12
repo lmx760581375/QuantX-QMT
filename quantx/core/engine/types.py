@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 class OrderAction(Enum):
@@ -23,6 +23,7 @@ class Order:
     date: str              # 委托日期
     reason: str = ""       # 下单原因（调试用）
     context: Dict[str, Any] = field(default_factory=dict)  # 下单时固化的策略上下文
+    depends_on_sells: List[str] = field(default_factory=list)  # 买单依赖同批卖单全部成交
 
 
 @dataclass

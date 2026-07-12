@@ -10,7 +10,6 @@
 import logging
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from quantx.core.engine.types import Order, OrderAction
@@ -259,6 +258,7 @@ class ShuijiaoSelector(StockSelector):
                 symbol=symbol,
                 score=float(select_df.loc[idx, "_score"]),
                 reason="shuijiao_buy",
+                signal_date=last_date,
             ))
 
         if p["log_trades"]:

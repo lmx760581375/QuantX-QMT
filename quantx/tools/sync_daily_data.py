@@ -19,6 +19,10 @@ from quantx.core.data import (
 
 def _load_symbols(args) -> List[str] | None:
     symbols: List[str] = []
+    if args.strategy_config:
+        from quantx.tools.run_backtest import load_config, load_symbols
+
+        symbols.extend(load_symbols(load_config(args.strategy_config)))
     if args.symbols:
         symbols.extend(args.symbols)
     if args.symbol_file:
@@ -34,6 +38,7 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--raw-dir", help="Raw CSV repository root. Defaults to data/raw/qmt or data/raw/baostock.")
     parser.add_argument("--mode", default="incremental", choices=["incremental"], help="Only safe incremental mode is supported.")
     parser.add_argument("--symbols", nargs="*", help="Optional symbols to update, e.g. SH600000 SZ000001.")
+    parser.add_argument("--strategy-config", help="Load the target universe from a standard strategy YAML.")
     parser.add_argument("--symbol-file", help="Optional file with one symbol per line.")
     parser.add_argument("--limit", type=int, help="Limit symbol count for smoke tests.")
     parser.add_argument("--end-date", help="Update until this date, defaults to today.")
@@ -60,13 +65,15 @@ def main(argv: List[str] | None = None) -> int:
         csv_dir=str(Path(raw_dir) / "stocks"),
     )
     if args.source == "qmt":
-        client_factory = lambda: QMTClient(
-            dividend_type=args.qmt_dividend_type,
-            pause_seconds=pause_seconds,
-            max_retries=3,
-        )
+        def client_factory():
+            return QMTClient(
+                dividend_type=args.qmt_dividend_type,
+                pause_seconds=pause_seconds,
+                max_retries=3,
+            )
     else:
-        client_factory = lambda: BaoStockClient(pause_seconds=pause_seconds, socket_timeout=args.socket_timeout)
+        def client_factory():
+            return BaoStockClient(pause_seconds=pause_seconds, socket_timeout=args.socket_timeout)
 
     updater = AdjustmentAwareIncrementalUpdater(
         repository=repository,

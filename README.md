@@ -13,7 +13,10 @@ A股量化研究与回测系统。
 
 ```bash
 # 安装依赖
-pip install "baostock>=0.9.2" pandas numpy pyyaml pydantic matplotlib duckdb
+pip install -e .
+
+# 配置远程 xqshare（本地 .env 不会提交到 Git）
+cp .env.example .env
 
 # 同步数据
 python -m quantx.tools.sync_data --start 2020-01-01
@@ -21,6 +24,17 @@ python -m quantx.tools.sync_data --start 2020-01-01
 # 运行回测
 python -m quantx.tools.run_backtest --strategy strategies/ma_cross.py --start 2020-01-01 --end 2025-12-31
 ```
+
+QMT 数据通过 Windows 上运行的 xqshare 服务获取。`.env` 使用 xqshare 原生配置项：
+
+```dotenv
+XQSHARE_REMOTE_HOST=192.168.0.117
+XQSHARE_REMOTE_PORT=18812
+XQSHARE_CLIENT_ID=client-standard
+XQSHARE_CLIENT_SECRET=replace-with-your-client-secret
+```
+
+可以通过 `QUANTX_ENV_FILE=/path/to/custom.env` 为不同环境指定其他配置文件。
 
 ## 开发状态
 

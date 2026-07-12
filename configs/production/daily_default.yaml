@@ -1,60 +1,63 @@
 name: default
 timezone: Asia/Shanghai
-
 daily_runs_dir: daily_runs
-
 schedule:
   enabled: true
-  data_update_time: "17:30"
-  strategy_update_time: "22:00"
-  mail_send_time: "22:00"
+  data_update_time: '17:30'
+  strategy_update_time: '22:00'
+  mail_send_time: '22:00'
   trading_days_only: true
   allow_manual_run: true
-
 data:
   provider_uri: data/qlib_data_fixed
   update_mode: incremental
   verify_after_update: true
   timeout_seconds: 21600
   update_command:
-    - python
-    - -m
-    - quantx.tools.sync_daily_data
-    - --provider-uri
-    - data/qlib_data_fixed
-    - --raw-dir
-    - data/raw/baostock
-    - --mode
-    - incremental
-    - --max-requests
-    - "45000"
-    - --socket-timeout
-    - "30"
-    - --progress-every
-    - "1"
-    - --json
-
+  - python
+  - -m
+  - quantx.tools.sync_daily_data
+  - --source
+  - qmt
+  - --provider-uri
+  - data/qlib_data_fixed
+  - --raw-dir
+  - data/raw/qmt
+  - --mode
+  - incremental
+  - --max-requests
+  - '45000'
+  - --socket-timeout
+  - '30'
+  - --progress-every
+  - '1'
+  - --json
 strategies:
   include:
-    - configs/strategies/generated/stocktradebyz_mainboard_stability_explore/bbi_short_long_base_pos5_topk4_close_strict_2020_2026_mainboard.yaml
-    - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_scale_12_keep85_recommended.yaml
-    - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_fast_exit_weak_early_hold_narrow.yaml
-    - configs/strategies/generated/weak_to_strong_fast_exit_grid/fast_exit_d18_p2_t8.yaml
-    - configs/strategies/generated/weak_to_strong_score_capacity/weak_to_strong_original_shape_pos6_topk6_2016_2026_mainboard.yaml
-    - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_high_win.yaml
-    - configs/strategies/generated/myquant_shuijiao_best_auto_mainboard.yaml
+  - configs/strategies/generated/stocktradebyz_mainboard_stability_explore/bbi_short_long_base_pos5_topk4_close_strict_2020_2026_mainboard.yaml
+  - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_scale_12_keep85_recommended.yaml
+  - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_fast_exit_weak_early_hold_narrow.yaml
+  - configs/strategies/generated/weak_to_strong_fast_exit_grid/fast_exit_d18_p2_t8.yaml
+  - configs/strategies/generated/weak_to_strong_score_capacity/weak_to_strong_original_shape_pos6_topk6_2016_2026_mainboard.yaml
+  - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_high_win.yaml
+  - configs/strategies/generated/myquant_shuijiao_best_auto_mainboard.yaml
+  - configs/strategies/generated/etf_wufu_qmt_next_open.yaml
   exclude: []
   only_positive_description: true
-
 reports:
   include:
-    - run_id: 20260708_100527_etf_wufu_next_open_confirm3_corr_daily_2016_2026
-      title: 五福ETF T+1开
-      description: 五福 ETF 严格日线版，T 日收盘生成信号，T+1 开盘成交，震荡期 3 日确认。
-    - run_id: 20260708_100530_etf_wufu_next_close_confirm3_corr_daily_2016_2026
-      title: 五福ETF T+1收
-      description: 五福 ETF 严格日线版，T 日收盘生成信号，T+1 收盘成交，震荡期 3 日确认。
-
+  - run_id: best_weak_to_strong
+    source_run_id: weak_to_strong_xqshare_20260711/28_fast_exit_d18_p2_t8
+    title: 最强弱转强
+    description: 71个弱转强策略全量回测中收益最高：2016-01-04至2026-07-10，总收益3845.73%。
+  - run_id: best_shuijiao
+    source_run_id: 20260711_xqshare_myquant_shuijiao_best_auto_mainboard
+    title: 睡觉策略
+    description: 当前最强睡觉策略：2021-01-04至2025-10-17，总收益229.95%，最大回撤-26.97%。
+  - run_id: best_wufu_qmt
+    source_run_id: 20260712_qmt_unified_wufu_next_open_confirm3_v2
+    title: 五福ETF
+    description: QMT统一数据与统一回测引擎版本：2016-01-04至2026-07-10，总收益1052.09%，最大回撤-33.66%。
 portfolio_state:
   mode: simulated
   state_dir: daily_state/default
@@ -63,14 +66,12 @@ portfolio_state:
   carry_positions: true
   apply_simulated_orders: true
   execution_price_policy: config_deal_price
-
 notification:
   enabled: true
   channel: qq_email
   config_path: configs/production/mail.example.yaml
-  # 推荐用环境变量 QUANTX_MAIL_TO 配置真实收件人，避免把私人邮箱提交进 git。
   recipients: []
-  subject_template: "QuantX 每日策略信号 {{ trade_date }}"
+  subject_template: QuantX 每日策略信号 {{ trade_date }}
   attach_json: false
   attach_html: true
   send_empty_signal_report: true

@@ -6,8 +6,10 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
+
 from .cost import TransactionCost
-from .types import DailySnapshot, Order, OrderAction, Position, Trade
+from .types import DailySnapshot, OrderAction, Position, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -170,12 +172,21 @@ class Account:
     # 每日更新
     # ============================================================
 
-    def update_daily_balance(self, date: str, exchange) -> None:
+    def update_daily_balance(self, date: str, exchange, market_data: Optional[pd.DataFrame] = None) -> None:
         """每日收盘更新持仓市值"""
         prev_value = self._last_total_value
 
         for sym, pos in self.positions.items():
-            close = exchange.get_close(sym, date)
+            close = None
+            if market_data is not None and not market_data.empty and "$close" in market_data.columns:
+                try:
+                    value = market_data.at[sym, "$close"]
+                    if not pd.isna(value):
+                        close = float(value)
+                except (KeyError, TypeError, ValueError):
+                    pass
+            if close is None:
+                close = exchange.get_close(sym, date)
             if close is not None:
                 pos.market_value = close * pos.quantity
                 if pos.highest_price <= 0:

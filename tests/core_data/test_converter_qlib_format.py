@@ -63,3 +63,5 @@ def test_convert_incremental_updates_instruments_dates(tmp_path):
 
     text = (qlib_dir / "instruments" / "all.txt").read_text(encoding="utf-8")
     assert "SZ000001\t2021-01-04\t2021-01-05" in text
+    amount = np.fromfile(qlib_dir / "features" / "sz000001" / "amount.day.bin", dtype="<f4")
+    np.testing.assert_allclose(amount[1:], [1000000, 1320000])

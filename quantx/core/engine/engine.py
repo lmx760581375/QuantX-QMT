@@ -10,15 +10,13 @@ from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
-
 from .account import Account
 from .board import BoardManager
 from .context import BacktestContext
 from .cost import TransactionCost
 from .exchange import AStockExchange
 from .executor import Executor
-from .types import DailySnapshot, Order, Signal, Trade
+from .types import DailySnapshot, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -153,11 +151,12 @@ class BacktestEngine:
 
             if isinstance(selection, list):
                 selection = StockSelection(signals=selection)
+            self._validate_signal_timing(selection, date, context.trade_dates)
             order_list = strategy.get_trade_signal(state, selection)
             if order_list and hasattr(order_list, "orders"):
                 executor.execute_batch(order_list.orders, account, exchange)
 
-            account.update_daily_balance(date, exchange)
+            account.update_daily_balance(date, exchange, market_data=state.market_data)
 
         time_stats["phase2_execution"] = time.time() - t2
         time_stats["total"] = time.time() - t0
@@ -173,6 +172,32 @@ class BacktestEngine:
             time_stats=time_stats,
             signal_errors=signal_errors,
         )
+
+    @staticmethod
+    def _validate_signal_timing(selection, execution_date: str, trade_dates) -> None:
+        calendar = {str(date): index for index, date in enumerate(trade_dates)}
+        execution_date = str(execution_date)
+        if execution_date not in calendar:
+            raise ValueError(f"Execution date {execution_date} is outside the trade calendar")
+
+        for signal in selection.signals:
+            signal_date = str(getattr(signal, "signal_date", "") or "")
+            if not signal_date:
+                raise ValueError(
+                    f"Signal for {signal.symbol} is missing signal_date; "
+                    f"execution_date={execution_date}"
+                )
+            if signal_date not in calendar:
+                raise ValueError(
+                    f"Signal date {signal_date} for {signal.symbol} is outside the trade calendar"
+                )
+            session_gap = calendar[execution_date] - calendar[signal_date]
+            if session_gap < 1:
+                raise ValueError(
+                    f"Signal date must be at least one trading session earlier than execution date: "
+                    f"symbol={signal.symbol}, signal_date={signal_date}, "
+                    f"execution_date={execution_date}, session_gap={session_gap}"
+                )
 
     def _phase1_precompute_signals(
         self,

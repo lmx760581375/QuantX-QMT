@@ -1,4 +1,4 @@
-"""QMT data source backed by the installed xtquant package."""
+"""QMT data source backed by a remote xqshare service."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ class QMTConfig:
     max_retries: int = 3
     workers: int = 8
     fill_data: bool = True
+    env_file: str | None = None
 
 
 class QMTDataSource(DataSource):
@@ -46,6 +47,7 @@ class QMTDataSource(DataSource):
             fill_data=self.config.fill_data,
             pause_seconds=self.config.pause_seconds,
             max_retries=self.config.max_retries,
+            env_file=self.config.env_file,
         )
         self.repository = LocalDataRepository(self.config.data_root)
         self.converter = BaostockToQlibConverter(
@@ -282,6 +284,7 @@ class QMTDataSource(DataSource):
             fill_data=self.config.fill_data,
             pause_seconds=self.config.pause_seconds,
             max_retries=self.config.max_retries,
+            env_file=self.config.env_file,
         )
 
     def _load_qlib_features(self, symbols: List[str], fields: List[str], start: str, end: str) -> pd.DataFrame:

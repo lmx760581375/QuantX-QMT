@@ -3,7 +3,6 @@
 使用 5 日均线上穿 20 日均线作为买入信号。
 """
 
-import numpy as np
 import pandas as pd
 
 from quantx.core.strategy.base import (
@@ -34,10 +33,18 @@ class MACrossSelector(StockSelector):
 
         if df.empty:
             return StockSelection(signals=[])
+        dates = list(getattr(state.context, "trade_dates", [])) if state.context is not None else []
+        try:
+            current_idx = dates.index(state.date)
+        except ValueError:
+            current_idx = -1
+        if current_idx <= 0:
+            return StockSelection(signals=[])
+        signal_date = dates[current_idx - 1]
 
         for symbol in df.index.get_level_values("symbol").unique() if isinstance(df.index, pd.MultiIndex) else df.index:
             try:
-                close = self._get_close_series(state, symbol)
+                close = self._get_close_series(state, symbol).loc[:signal_date]
                 if close is None or len(close) < self.ma_long + 1:
                     continue
 
@@ -47,7 +54,12 @@ class MACrossSelector(StockSelector):
                 # 金叉：MA5 上穿 MA20
                 if ma_s.iloc[-2] <= ma_l.iloc[-2] and ma_s.iloc[-1] > ma_l.iloc[-1]:
                     score = (ma_s.iloc[-1] / ma_l.iloc[-1] - 1) * 100
-                    signals.append(Signal(symbol=symbol, score=score, reason="ma_cross"))
+                    signals.append(Signal(
+                        symbol=symbol,
+                        score=score,
+                        reason="ma_cross",
+                        signal_date=signal_date,
+                    ))
             except Exception:
                 continue
 

@@ -33,6 +33,9 @@ class _Context:
     def record_daily_selection_candidates(self, date, detail):
         self._daily_selection_candidates[date] = dict(detail)
 
+    def record_selection_candidates(self, date, detail):
+        self._daily_selection_candidates[date] = dict(detail)
+
     def get_daily_selection_candidates(self):
         return [
             self._daily_selection_candidates[date]
@@ -131,17 +134,20 @@ def test_watchlist_selector_waits_for_confirmation_after_setup():
 
     first = selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
     second = selector.act(PolicyState(date="2021-01-06", market_data=pd.DataFrame(), context=context))
+    third = selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
 
     assert first.signals == []
-    assert [signal.symbol for signal in second.signals] == ["SZ000001"]
-    assert second.signals[0].score == 4.0
+    assert second.signals == []
+    assert [signal.symbol for signal in third.signals] == ["SZ000001"]
+    assert third.signals[0].score == 4.0
+    assert context.get_daily_selection_candidates()[-1]["signal_date"] == "2021-01-06"
 
 
 def test_watchlist_selector_drops_expired_setups():
     runtime = _runtime()
     context = _Context(runtime)
     selector = WatchlistFormulaSelector(
-        formulas={"setup": "close > 2", "confirm": "close >= 4", "score": "close"},
+        formulas={"setup": "close > 2", "confirm": "close > 100", "score": "close"},
         setup="setup",
         confirm="confirm",
         score="score",
@@ -152,10 +158,12 @@ def test_watchlist_selector_drops_expired_setups():
         topk=1,
     )
     selector.prepare(context)
+    context.trade_dates.append("2021-01-08")
 
     selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
     selector.act(PolicyState(date="2021-01-06", market_data=pd.DataFrame(), context=context))
-    selection = selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
+    selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
+    selection = selector.act(PolicyState(date="2021-01-08", market_data=pd.DataFrame(), context=context))
 
     assert selection.signals == []
 
@@ -177,7 +185,8 @@ def test_watchlist_selector_confirm_can_use_watchlist_pnl_state():
     selector.prepare(context)
 
     selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
-    selection = selector.act(PolicyState(date="2021-01-06", market_data=pd.DataFrame(), context=context))
+    selector.act(PolicyState(date="2021-01-06", market_data=pd.DataFrame(), context=context))
+    selection = selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
 
     assert [signal.symbol for signal in selection.signals] == ["SZ000001"]
 
@@ -206,10 +215,12 @@ def test_watchlist_drawdown_from_peak_uses_peak_relative_ratio():
         topk=1,
     )
     selector.prepare(context)
+    context.trade_dates.append("2021-01-08")
 
     selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
     selector.act(PolicyState(date="2021-01-06", market_data=pd.DataFrame(), context=context))
-    selection = selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
+    selector.act(PolicyState(date="2021-01-07", market_data=pd.DataFrame(), context=context))
+    selection = selector.act(PolicyState(date="2021-01-08", market_data=pd.DataFrame(), context=context))
 
     assert [signal.symbol for signal in selection.signals] == ["SZ000001"]
 
@@ -271,6 +282,18 @@ def test_compile_strategy_config_returns_formula_dag():
     assert spec.formula_order == ["ma", "buy_signal"]
     assert spec.dependencies["buy_signal"] == ["ma", "my_close"]
     assert spec.selector["sort"] == "score_asc"
+
+
+def test_compile_strategy_config_accepts_slot_equal_sizing():
+    spec = compile_strategy_config({
+        "fields": {"close": "$close"},
+        "signals": {"buy_signal": "close > 1"},
+        "selector": {"where": "buy_signal", "score": "close"},
+        "rebalance": {"type": "equal_weight", "max_positions": 10},
+        "execution": {"buy": {"sizing": "slot_equal"}},
+    })
+
+    assert spec.execution["buy"]["sizing"] == "slot_equal"
 
 
 def test_compile_strategy_config_accepts_partial_sell_rule():
@@ -358,6 +381,84 @@ def test_equal_weight_rebalance_can_use_rank_tier_weights():
         "SZ000003": 0.25 / 2.5,
         "SZ000004": 0.25 / 2.5,
     })
+
+
+def test_slot_equal_rebalance_uses_base_position_slots():
+    rebalance = EqualWeightRebalance(max_positions=10, slot_weights=True)
+    state = PolicyState(date="2021-01-04", market_data=pd.DataFrame())
+    selection = StockSelection(signals=[
+        Signal("SZ000001", 2.0),
+        Signal("SZ000002", 1.0),
+    ])
+
+    allocation = rebalance.act(state, selection)
+
+    assert allocation.weights == pytest.approx({
+        "SZ000001": 0.1,
+        "SZ000002": 0.1,
+    })
+
+
+def test_slot_equal_rank_weights_are_normalized_across_base_slots():
+    rebalance = EqualWeightRebalance(
+        max_positions=4,
+        rank_weights=[2.0, 1.0],
+        slot_weights=True,
+    )
+    state = PolicyState(date="2021-01-04", market_data=pd.DataFrame())
+    selection = StockSelection(signals=[Signal("SZ000001", 2.0), Signal("SZ000002", 1.0)])
+
+    allocation = rebalance.act(state, selection)
+
+    assert allocation.weights == pytest.approx({"SZ000001": 0.4, "SZ000002": 0.2})
+
+
+def test_slot_equal_execution_caps_each_buy_at_portfolio_slot():
+    state = PolicyState(
+        date="2021-01-04",
+        market_data=pd.DataFrame({"$close": [10.0, 10.0]}, index=["SZ000001", "SZ000002"]),
+        account=AccountSnapshot(cash=100000.0, total_value=100000.0),
+    )
+    execution = RuleExecution(
+        [],
+        cost=None,
+        deal_price="close",
+        cash_use_ratio=0.9,
+        sizing="slot_equal",
+    )
+
+    orders = execution.act(state, WeightAllocation(weights={"SZ000001": 0.1, "SZ000002": 0.1}))
+
+    assert [order.quantity for order in orders.orders] == [900, 900]
+
+
+def test_new_buy_depends_on_sell_when_it_uses_a_released_slot():
+    state = PolicyState(
+        date="2021-01-04",
+        market_data=pd.DataFrame({"$close": [10.0]}, index=["SZ000002"]),
+        account=AccountSnapshot(cash=10000.0, total_value=20000.0),
+        positions={
+            "SZ000001": PositionSnapshot(
+                "SZ000001", quantity=1000, avg_cost=10.0, market_value=10000.0
+            ),
+        },
+        extra={"planned_sell_symbols": {"SZ000001"}},
+    )
+    rebalance = EqualWeightRebalance(max_positions=1, slot_weights=True)
+    allocation = rebalance.act(
+        state,
+        StockSelection(signals=[Signal("SZ000002", 1.0)]),
+    )
+    execution = RuleExecution(
+        [],
+        cost=None,
+        deal_price="close",
+        sizing="slot_equal",
+    )
+
+    orders = execution.act(state, allocation)
+
+    assert orders.orders[0].depends_on_sells == ["SZ000001"]
 
 
 def test_equal_weight_rebalance_can_use_account_drawdown_rule():
@@ -481,33 +582,28 @@ def test_compile_strategy_config_rejects_unknown_add_existing_rule_variable():
         })
 
 
-def test_rule_execution_buy_when_filters_current_day_buys():
+def test_rule_execution_buy_when_filters_using_signal_day_values():
     index = pd.MultiIndex.from_product(
-        [pd.to_datetime(["2021-01-04"]), ["SZ000001", "SZ000002"]],
+        [pd.to_datetime(["2021-01-04", "2021-01-05"]), ["SZ000001", "SZ000002"]],
         names=["datetime", "instrument"],
     )
-    quote = pd.DataFrame({"$close": [10.0, 10.0]}, index=index)
-
-    class _Exchange:
-        def __init__(self):
-            self.quote = quote
-
-        def is_limit_up(self, symbol, date):
-            return False
-
-    class _RuntimeContext:
-        def __init__(self):
-            self.exchange = _Exchange()
+    runtime = FactorRuntime(MarketPanel.from_frame(pd.DataFrame({
+        "$close": [10.0, 10.0, 8.0, 12.0],
+        "$open": [9.0, 11.0, 9.0, 11.0],
+    }, index=index)))
+    context = _Context(runtime)
+    context.trade_dates = ["2021-01-04", "2021-01-05"]
 
     market_data = pd.DataFrame({
-        "$close": [10.0, 10.0],
+        "$close": [8.0, 12.0],
         "$open": [9.0, 11.0],
     }, index=["SZ000001", "SZ000002"])
     state = PolicyState(
-        date="2021-01-04",
+        date="2021-01-05",
         market_data=market_data,
         account=AccountSnapshot(cash=100000.0, total_value=100000.0),
-        context=_RuntimeContext(),
+        context=context,
+        extra={"signal_dates": {"SZ000001": "2021-01-04", "SZ000002": "2021-01-04"}},
     )
     execution = RuleExecution([], cost=None, deal_price="close", buy_when="close > open")
 
@@ -913,27 +1009,24 @@ def test_compile_strategy_config_rejects_unknown_entry_context_base():
 
 def test_rule_execution_snapshots_entry_context_on_buy_orders():
     index = pd.MultiIndex.from_product(
-        [pd.to_datetime(["2021-01-04"]), ["SZ000001"]],
+        [pd.to_datetime(["2021-01-04", "2021-01-05", "2021-01-06"]), ["SZ000001"]],
         names=["datetime", "instrument"],
     )
-    quote = pd.DataFrame({"$close": [10.0]}, index=index)
-
-    class _Exchange:
-        def __init__(self):
-            self.quote = quote
-
-        def is_limit_up(self, symbol, date):
-            return False
-
-    class _RuntimeContext:
-        def __init__(self):
-            self.exchange = _Exchange()
+    runtime = FactorRuntime(MarketPanel.from_frame(pd.DataFrame({
+        "$close": [10.0, 9.8, 10.0],
+        "$high": [10.1, 9.9, 10.1],
+        "$low": [9.9, 9.7, 9.9],
+    }, index=index)))
+    runtime.compute_formulas({"pre_5_return": "close / Ref(close, 1) - 1"})
+    context = _Context(runtime)
+    context.trade_dates = ["2021-01-04", "2021-01-05", "2021-01-06"]
 
     state = PolicyState(
-        date="2021-01-04",
-        market_data=pd.DataFrame({"$close": [10.0], "pre_5_return": [-0.02]}, index=["SZ000001"]),
+        date="2021-01-06",
+        market_data=pd.DataFrame({"$close": [10.0]}, index=["SZ000001"]),
         account=AccountSnapshot(cash=100000.0, total_value=100000.0),
-        context=_RuntimeContext(),
+        context=context,
+        extra={"signal_dates": {"SZ000001": "2021-01-05"}},
     )
     execution = RuleExecution(
         [{"name": "future_context_rule", "when": "entry_pre_5_return <= 0 and pnl_pct < -0.08"}],
@@ -946,6 +1039,42 @@ def test_rule_execution_snapshots_entry_context_on_buy_orders():
     assert len(orders.orders) == 1
     assert orders.orders[0].action.name == "BUY"
     assert orders.orders[0].context["entry_pre_5_return"] == pytest.approx(-0.02)
+
+
+def test_rule_execution_sell_formula_uses_prior_trading_day():
+    index = pd.MultiIndex.from_product(
+        [pd.to_datetime(["2021-01-04", "2021-01-05"]), ["SZ000001"]],
+        names=["datetime", "instrument"],
+    )
+    runtime = FactorRuntime(MarketPanel.from_frame(pd.DataFrame({
+        "$close": [9.0, 11.0],
+        "$high": [9.1, 11.1],
+        "$low": [8.9, 10.9],
+    }, index=index)))
+    context = _Context(runtime)
+    context.trade_dates = ["2021-01-04", "2021-01-05"]
+    state = PolicyState(
+        date="2021-01-05",
+        market_data=pd.DataFrame({"$close": [11.0]}, index=["SZ000001"]),
+        account=AccountSnapshot(cash=0.0, total_value=11000.0),
+        positions={
+            "SZ000001": PositionSnapshot(
+                "SZ000001", quantity=1000, avg_cost=10.0, market_value=11000.0
+            ),
+        },
+        context=context,
+    )
+    execution = RuleExecution(
+        [{"name": "prior_close_break", "when": "close < 10", "action": "sell_all"}],
+        cost=None,
+        deal_price="close",
+    )
+
+    orders = execution.act(state, WeightAllocation(weights={}))
+
+    assert len(orders.orders) == 1
+    assert orders.orders[0].action.name == "SELL"
+    assert orders.orders[0].reason == "prior_close_break"
 
 
 def test_rule_execution_sell_rule_can_use_position_context():

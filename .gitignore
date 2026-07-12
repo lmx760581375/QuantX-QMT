@@ -13,6 +13,7 @@
 # Generated artifacts and local archives
 /artifacts/
 /archived_runs/
+.env
 *.zip
 *.log
 *.out

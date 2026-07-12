@@ -1,9 +1,10 @@
 """Backtest engine execution-loop regression tests."""
 
 import pandas as pd
+import pytest
 
 from quantx.core.engine.engine import BacktestConfig, BacktestEngine
-from quantx.core.strategy.base import OrderList, StockSelection
+from quantx.core.strategy.base import OrderList, Signal, StockSelection
 
 
 class _FakeExchange:
@@ -36,6 +37,12 @@ class _FakeContext:
     def get_factor_data(self, date):
         return None
 
+    def get_selection_candidates(self):
+        return []
+
+    def get_daily_selection_candidates(self):
+        return []
+
     def next(self):
         date = self.trade_dates[self._idx]
         self._idx += 1
@@ -58,7 +65,7 @@ class _FakeAccount:
     def get_total_value(self):
         return self.cash
 
-    def update_daily_balance(self, date, exchange):
+    def update_daily_balance(self, date, exchange, market_data=None):
         self.daily_snapshots.append(type("Snapshot", (), {
             "date": date,
             "total_value": self.cash,
@@ -168,3 +175,64 @@ def test_engine_precomputes_only_when_strategy_opts_in(monkeypatch):
     BacktestEngine(config).run(strategy, ["SZ000001"])
 
     assert strategy.cash_values == [1_000_000.0, 1_000_000.0, 1_000_000.0]
+
+
+def test_engine_accepts_signal_from_prior_trading_session():
+    selection = StockSelection(signals=[
+        Signal("SZ000001", 1.0, signal_date="2021-01-04"),
+    ])
+
+    BacktestEngine._validate_signal_timing(
+        selection,
+        "2021-01-05",
+        ["2021-01-04", "2021-01-05"],
+    )
+
+
+@pytest.mark.parametrize("signal_date", ["", "2021-01-05", "2021-01-06"])
+def test_engine_rejects_missing_or_non_prior_signal_date(signal_date):
+    selection = StockSelection(signals=[
+        Signal("SZ000001", 1.0, signal_date=signal_date),
+    ])
+
+    with pytest.raises(ValueError, match="signal_date|Signal date"):
+        BacktestEngine._validate_signal_timing(
+            selection,
+            "2021-01-05",
+            ["2021-01-04", "2021-01-05", "2021-01-06"],
+        )
+
+
+def test_engine_rejects_signal_date_outside_trade_calendar():
+    selection = StockSelection(signals=[
+        Signal("SZ000001", 1.0, signal_date="2021-01-03"),
+    ])
+
+    with pytest.raises(ValueError, match="outside the trade calendar"):
+        BacktestEngine._validate_signal_timing(
+            selection,
+            "2021-01-05",
+            ["2021-01-04", "2021-01-05"],
+        )
+
+
+def test_engine_requires_signal_date_for_every_selection():
+    selection = StockSelection(signals=[Signal("SZ000001", 1.0)])
+
+    with pytest.raises(ValueError, match="missing signal_date"):
+        BacktestEngine._validate_signal_timing(
+            selection,
+            "2021-01-05",
+            ["2021-01-04", "2021-01-05"],
+        )
+
+
+def test_engine_rejects_execution_date_outside_trade_calendar():
+    selection = StockSelection(signals=[])
+
+    with pytest.raises(ValueError, match="Execution date.*outside the trade calendar"):
+        BacktestEngine._validate_signal_timing(
+            selection,
+            "2021-01-06",
+            ["2021-01-04", "2021-01-05"],
+        )

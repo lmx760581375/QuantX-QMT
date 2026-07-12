@@ -36,16 +36,17 @@ conda run -n test python -m quantx.tools.update_meta \
 
 The importer reads each CSV row's `snapshot_date` first. `--date` is only needed as a fallback or intentional override.
 
-## Incrementally Update Stock Data
+## Incrementally Update QMT Market Data
 
-Use the adjustment-aware updater. It refetches an overlap window before each stock's local `last_date`; if forward-adjusted prices changed in the overlap, it refreshes that stock from its first local date and rewrites its Qlib bin files.
+Use the adjustment-aware QMT/xqshare updater. Stocks, ETFs, and other explicitly requested exchange instruments are stored in the same raw repository and Qlib provider.
 
 Safe smoke run:
 
 ```bash
 conda run -n test python -m quantx.tools.sync_daily_data \
+  --source qmt \
   --provider-uri data/qlib_data_fixed \
-  --raw-dir data/raw/baostock \
+  --raw-dir data/raw/qmt \
   --limit 5 \
   --dry-run \
   --json
@@ -55,9 +56,21 @@ Production data update:
 
 ```bash
 conda run -n test python -m quantx.tools.sync_daily_data \
+  --source qmt \
   --provider-uri data/qlib_data_fixed \
-  --raw-dir data/raw/baostock \
+  --raw-dir data/raw/qmt \
   --mode incremental \
+  --json
+```
+
+Sync the named universe from a standard strategy config, including ETF rotation pools:
+
+```bash
+conda run -n test python -m quantx.tools.sync_daily_data \
+  --source qmt \
+  --strategy-config configs/strategies/generated/etf_wufu_qmt_next_open.yaml \
+  --provider-uri data/qlib_data_fixed \
+  --raw-dir data/raw/qmt \
   --json
 ```
 
@@ -108,6 +121,28 @@ conda run -n test python -m quantx.tools.update_meta --probe --json
 ```
 
 Online metadata endpoints have been unreliable on this machine. Do not depend on them for normal strategy research.
+
+## Add An Existing Strategy To The Web Workspace
+
+Register only the strategy config:
+
+```bash
+conda run -n test python -m quantx.tools.agent_context add-to-visualization \
+  --config configs/strategies/generated/example.yaml
+```
+
+Register the strategy and an existing backtest report:
+
+```bash
+conda run -n test python -m quantx.tools.agent_context add-to-visualization \
+  --config configs/strategies/generated/example.yaml \
+  --run-id batch/example_run \
+  --report-id best_example \
+  --title 最强示例 \
+  --description 示例策略说明
+```
+
+The command validates both paths and updates `configs/production/daily_default.yaml` idempotently. `--report-id` must be a single URL-safe path segment; `--run-id` may point to a nested directory under `runs/`.
 
 ## Start Web Workspace
 

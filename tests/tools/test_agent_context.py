@@ -1,7 +1,10 @@
 """Agent context CLI tests."""
 
+import yaml
+
 from quantx.tools.agent_context import (
     build_parser,
+    cmd_add_to_visualization,
     cmd_data_update,
     cmd_latest_run,
     cmd_meta,
@@ -33,6 +36,57 @@ def test_agent_context_parser_exposes_data_update():
     assert args.command == "data-update"
     assert args.dry_run is True
     assert args.limit == 1
+
+
+def test_agent_context_adds_existing_strategy_and_run_to_visualization(tmp_path):
+    config = tmp_path / "configs" / "strategies" / "demo.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("name: demo\ntitle: Demo\n", encoding="utf-8")
+    run = tmp_path / "runs" / "batch" / "demo_run"
+    run.mkdir(parents=True)
+    (run / "summary.json").write_text('{"run_id": "demo_run", "name": "demo"}', encoding="utf-8")
+    profile = tmp_path / "configs" / "production" / "daily_default.yaml"
+    profile.parent.mkdir(parents=True)
+    profile.write_text("name: default\nstrategies:\n  include: []\nreports:\n  include: []\n", encoding="utf-8")
+    args = Args(
+        root=str(tmp_path),
+        config="configs/strategies/demo.yaml",
+        run_id="batch/demo_run",
+        report_id="best_demo",
+        profile="configs/production/daily_default.yaml",
+        title="最强示例",
+        description="示例说明",
+    )
+
+    first = cmd_add_to_visualization(args)
+    second = cmd_add_to_visualization(args)
+    saved = yaml.safe_load(profile.read_text(encoding="utf-8"))
+
+    assert first["ok"] is True
+    assert first["strategy_added"] is True
+    assert first["report_added"] is True
+    assert second["strategy_added"] is False
+    assert second["report_added"] is False
+    assert saved["strategies"]["include"] == ["configs/strategies/demo.yaml"]
+    assert saved["reports"]["include"] == [{
+        "run_id": "best_demo",
+        "source_run_id": "batch/demo_run",
+        "title": "最强示例",
+        "description": "示例说明",
+    }]
+
+
+def test_agent_context_add_to_visualization_parser():
+    parser = build_parser()
+    args = parser.parse_args([
+        "add-to-visualization",
+        "--config", "configs/strategies/demo.yaml",
+        "--run-id", "batch/demo_run",
+        "--report-id", "best_demo",
+    ])
+
+    assert args.command == "add-to-visualization"
+    assert args.report_id == "best_demo"
 
 
 def test_agent_context_data_update_uses_adjustment_aware_updater(monkeypatch, tmp_path):

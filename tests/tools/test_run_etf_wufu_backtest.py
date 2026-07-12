@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from quantx.tools.run_etf_wufu_backtest import (
+from quantx.strategies.market_regime_rotation_model import (
     _affordable_quantity,
     _apply_choppy_confirmation,
     _apply_hold_hysteresis,

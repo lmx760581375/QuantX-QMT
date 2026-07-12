@@ -1,0 +1,37 @@
+name: etf_wufu_qmt_next_open_confirm3
+title: 五福ETF
+description: 五福 ETF 严格日线轮动统一版；全部 ETF 行情由 QMT/xqshare 写入统一 Qlib provider，T 日收盘生成信号，T+1 开盘成交，震荡目标连续 3 日确认。
+version: 1
+
+strategy:
+  type: market_regime_rotation
+  params:
+    choppy_confirm_days: 3
+    dynamic_theme_top_n: 0
+
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: wufu_etf
+  start: 2016-01-04
+  end: latest
+  look_back_days: 120
+
+engine:
+  init_cash: 1000000
+  max_workers: 1
+  validate_trading_rules: true
+  auto_adjust_buy_quantity: true
+  error_policy: fail_fast
+  precompute_signals: false
+
+execution:
+  deal_price: open
+  cash_use_ratio: 0.99
+  lot_size: 100
+
+cost:
+  commission_rate: 0.0001
+  min_commission: 5
+  stamp_tax_rate: 0
+  transfer_fee_rate: 0
+  slippage: 0.0001

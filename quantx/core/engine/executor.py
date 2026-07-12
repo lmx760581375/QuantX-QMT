@@ -124,11 +124,24 @@ class Executor:
         buy_orders = [o for o in orders if o.action == OrderAction.BUY]
 
         trades = []
+        filled_sells = set()
         for order in sell_orders:
             trade = self.execute(order, account, exchange)
             if trade:
                 trades.append(trade)
+                filled_sells.add(order.symbol)
         for order in buy_orders:
+            if set(order.depends_on_sells) - filled_sells:
+                account.trades.append(Trade(
+                    symbol=order.symbol,
+                    action=order.action,
+                    price=order.price,
+                    quantity=0,
+                    date=order.date,
+                    reject_reason="sell_dependency_failed",
+                    reason=order.reason,
+                ))
+                continue
             trade = self.execute(order, account, exchange)
             if trade:
                 trades.append(trade)

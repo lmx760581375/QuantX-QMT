@@ -289,6 +289,28 @@
     }
     .symbol-tile .label { color: var(--muted); font-size: 12px; }
     .symbol-tile .value { margin-top: 7px; font-size: 18px; font-weight: 800; }
+    .symbol-concepts {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 0 0 12px;
+    }
+    .symbol-concepts .label {
+      flex: 0 0 auto;
+      padding-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .concept-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }
+    .concept-list .pill {
+      color: var(--text);
+      background: #11140f;
+    }
     .pattern-figures {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -470,6 +492,7 @@
           </div>
           <div class="panel-body">
             <div class="symbol-summary" id="symbolSummary"></div>
+            <div class="symbol-concepts" id="symbolConcepts"></div>
             <canvas id="klineCanvas" width="1400" height="620"></canvas>
           </div>
         </div>
@@ -951,7 +974,7 @@
       const meta = detail.meta || {};
       const name = detail.name && detail.name !== detail.symbol ? detail.name : detail.symbol;
       const industry = meta.industry_name || meta.industry_code || '';
-      document.getElementById('symbolTitle').textContent = [name, detail.symbol, industry, 'B/S 点'].filter(Boolean).join(' · ');
+      document.getElementById('symbolTitle').textContent = [name, detail.symbol, industry].filter(Boolean).join(' · ');
       document.getElementById('symbolTradeCount').textContent = `${detail.trades.length} trades`;
       document.getElementById('roundTripCount').textContent = `${detail.round_trips.length} trips`;
       renderSymbolSummary(detail);
@@ -972,6 +995,7 @@
       const buys = (detail.trades || []).filter(t => t.action === 'BUY').length;
       const sells = (detail.trades || []).filter(t => t.action === 'SELL').length;
       const meta = detail.meta || {};
+      const concepts = String(meta.concept_names || '').split('|').map(v => v.trim()).filter(Boolean);
       const tiles = [
         ['股票名称', detail.name || detail.symbol, 'gold'],
         ['股票代码', detail.symbol, ''],
@@ -983,6 +1007,9 @@
         ['B / S 次数', `${buys} / ${sells}`, ''],
       ];
       document.getElementById('symbolSummary').innerHTML = tiles.map(([k, v, c]) => `<div class="symbol-tile"><div class="label">${k}</div><div class="value ${c}">${esc(v)}</div></div>`).join('');
+      document.getElementById('symbolConcepts').innerHTML = concepts.length
+        ? `<div class="label">概念</div><div class="concept-list">${concepts.map(name => `<span class="pill">${esc(name)}</span>`).join('')}</div>`
+        : '<div class="label">概念</div><div class="concept-list"><span class="pill">暂无</span></div>';
     }
     function renderSymbolTrades(trades) {
       const rows = trades.map(t => `<tr class="clickable" onclick="focusKlineDate('${esc(t.date)}')"><td class="left">${esc(t.date)}</td><td class="${t.action === 'BUY' ? 'up' : 'down'}">${t.action === 'BUY' ? 'B' : 'S'}</td><td>${num(t.price, 3)}</td><td>${num(t.quantity, 0)}</td><td>${num(t.trade_value)}</td></tr>`).join('');
