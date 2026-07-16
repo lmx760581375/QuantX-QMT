@@ -19,6 +19,8 @@ class TransactionCost:
     stamp_tax_rate: float = 0.0005      # 印花税（万五，仅卖出）
     transfer_fee_rate: float = 0.00002  # 过户费（十万分之二，仅沪市）
     slippage: float = 0.001             # 滑点比例（0.1%）
+    buy_slippage: float | None = None   # 买入侧滑点；未设置时使用 slippage
+    sell_slippage: float | None = None  # 卖出侧滑点；未设置时使用 slippage
     stamp_tax_on_buy: bool = False      # 兼容旧回测：买入也扣印花税
 
     def calculate_buy_cost(
@@ -73,6 +75,8 @@ class TransactionCost:
     def apply_slippage(self, price: float, action: OrderAction) -> float:
         """应用滑点：买入加价，卖出降价"""
         if action == OrderAction.BUY:
-            return price * (1 + self.slippage)
+            slippage = self.slippage if self.buy_slippage is None else self.buy_slippage
+            return price * (1 + slippage)
         else:
-            return price * (1 - self.slippage)
+            slippage = self.slippage if self.sell_slippage is None else self.sell_slippage
+            return price * (1 - slippage)

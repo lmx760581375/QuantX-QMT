@@ -1,0 +1,60 @@
+name: path_sequence_top7_bridge_v1
+title: 路径序列Top7
+description: Path sequence milestone 策略：使用冻结 PredictionStore 输入，当前主线版本为 grid_0878 bridge + Top7。DL alpha 0.03 版本需要等可复用模型产物和最新日无标签特征链路落地后再切换；日度回放禁止隐式重训。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: prediction_store
+  prediction_pool_topk: 7
+  start: 2022-01-04
+  end: latest
+  look_back_days: 5
+strategy:
+  type: decision_pipeline
+  account_id: simulated
+  instance_id: path_sequence_top7_bridge_v1
+  rebalance_interval_sessions: 5
+  alpha:
+    type: predictions
+    path: artifacts/predictions/path_sequence_top7_bridge/latest.json
+    artifact_id: path_sequence_top7_bridge_v1
+    feature_schema_hash: path_sequence_v2_with_aux_104_grid0878_top7
+  portfolio:
+    type: topk_equal
+    top_k: 7
+    gross_exposure: 0.98
+  risk:
+    type: noop
+  exit:
+    max_loss_pct: -0.10
+    max_loss_days: 0
+    trailing_stop_pct: 0.0
+    trailing_activate_profit: 0.0
+  buy_filter:
+    exclude_st: true
+    meta_store_uri: data/meta/quantx_meta.sqlite
+    exclude_st_like_limit_rate: true
+    st_like_lookback_sessions: 60
+    st_like_min_limit_hits: 2
+    max_buy_open_gap_pct: 0.03
+    cooldown_sessions_after_sell: 5
+  order_planner:
+    type: standard
+    lot_size: 100
+execution:
+  deal_price: open
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: true
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: open
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true

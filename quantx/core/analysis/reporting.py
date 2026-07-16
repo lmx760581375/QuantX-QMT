@@ -45,11 +45,15 @@ def build_run_report(
     daily_selection_candidates = list(getattr(result, "daily_selection_candidates", []) or [])
     metrics = compute_metrics(daily_nav, trades, closed_positions, result.config.init_cash if result.config else 0.0)
     summary = _build_summary(result, config, symbols, run_id, metrics)
+    artifact_refs = _artifact_refs(config)
+    if artifact_refs:
+        summary["artifact_refs"] = artifact_refs
     explain = {
         "config": config,
         "engine": asdict(result.config) if result.config is not None else None,
         "time_stats": result.time_stats,
         "signal_errors": result.signal_errors,
+        "artifact_refs": artifact_refs,
     }
     return RunReport(
         run_id=run_id,
@@ -121,6 +125,8 @@ def compute_metrics(
     nav["date"] = pd.to_datetime(nav["date"])
     nav = nav.sort_values("date")
     values = pd.to_numeric(nav["total_value"], errors="coerce")
+    cash = pd.to_numeric(nav["cash"], errors="coerce") if "cash" in nav else pd.Series(float("nan"), index=nav.index)
+    utilization = ((values - cash) / values.where(values > 0)).clip(lower=0.0, upper=1.0)
     returns = values.pct_change().fillna(0.0)
     final_value = float(values.iloc[-1])
     total_return = final_value / init_cash - 1
@@ -163,6 +169,11 @@ def compute_metrics(
         "avg_holding_days": float(closed["holding_days"].mean()) if not closed.empty else 0.0,
         "avg_position_count": float(pd.to_numeric(nav["position_count"], errors="coerce").mean()),
         "max_position_count": int(pd.to_numeric(nav["position_count"], errors="coerce").max()),
+        "avg_capital_utilization": float(utilization.mean()),
+        "recent_30_capital_utilization": float(utilization.tail(30).mean()),
+        "recent_60_capital_utilization": float(utilization.tail(60).mean()),
+        "high_utilization_day_ratio": float((utilization >= 0.7).mean()),
+        "zero_utilization_day_ratio": float((utilization <= 1e-6).mean()),
         "total_cost": float(sum(t.get("total_cost", 0.0) for t in executed_trades)),
     }
 
@@ -180,12 +191,14 @@ def match_closed_positions(trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         if quantity <= 0:
             continue
         if action == "BUY":
-            lots.setdefault(symbol, []).append({
-                "date": trade["date"],
-                "quantity": quantity,
-                "price": float(trade["price"]),
-                "cost_per_share": (float(trade["trade_value"]) + float(trade.get("total_cost", 0.0))) / quantity,
-            })
+            lots.setdefault(symbol, []).append(
+                {
+                    "date": trade["date"],
+                    "quantity": quantity,
+                    "price": float(trade["price"]),
+                    "cost_per_share": (float(trade["trade_value"]) + float(trade.get("total_cost", 0.0))) / quantity,
+                }
+            )
         elif action == "SELL":
             remaining = quantity
             queue = lots.get(symbol, [])
@@ -198,22 +211,40 @@ def match_closed_positions(trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 net_pnl = exit_value - exit_cost - entry_cost
                 entry_date = pd.Timestamp(lot["date"])
                 exit_date = pd.Timestamp(trade["date"])
-                closed.append({
-                    "symbol": symbol,
-                    "entry_date": entry_date.strftime("%Y-%m-%d"),
-                    "exit_date": exit_date.strftime("%Y-%m-%d"),
-                    "quantity": matched,
-                    "entry_price": float(lot["price"]),
-                    "exit_price": float(trade["price"]),
-                    "holding_days": int((exit_date - entry_date).days),
-                    "return": _safe_div(net_pnl, entry_cost),
-                    "net_pnl": net_pnl,
-                })
+                closed.append(
+                    {
+                        "symbol": symbol,
+                        "entry_date": entry_date.strftime("%Y-%m-%d"),
+                        "exit_date": exit_date.strftime("%Y-%m-%d"),
+                        "quantity": matched,
+                        "entry_price": float(lot["price"]),
+                        "exit_price": float(trade["price"]),
+                        "holding_days": int((exit_date - entry_date).days),
+                        "return": _safe_div(net_pnl, entry_cost),
+                        "net_pnl": net_pnl,
+                    }
+                )
                 lot["quantity"] -= matched
                 remaining -= matched
                 if lot["quantity"] <= 0:
                     queue.pop(0)
     return closed
+
+
+def _artifact_refs(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    strategy = dict(config.get("strategy") or {})
+    alpha = dict(strategy.get("alpha") or {})
+    artifact_id = alpha.get("artifact_id")
+    if not artifact_id:
+        return []
+    return [
+        {
+            "artifact_id": str(artifact_id),
+            "feature_schema_hash": alpha.get("feature_schema_hash"),
+            "prediction_store": alpha.get("path"),
+            "prediction_checksum": alpha.get("checksum"),
+        }
+    ]
 
 
 def _build_summary(
@@ -254,15 +285,17 @@ def _build_daily_nav(result: BacktestResult) -> List[Dict[str, Any]]:
         total_value = float(snapshot.total_value)
         running_max = total_value if running_max is None else max(running_max, total_value)
         drawdown = total_value / running_max - 1 if running_max and running_max > 0 else 0.0
-        rows.append({
-            "date": snapshot.date,
-            "cash": float(snapshot.cash),
-            "total_value": total_value,
-            "daily_return": float(snapshot.daily_return),
-            "cumulative_return": float(snapshot.cumulative_return),
-            "drawdown": float(drawdown),
-            "position_count": len(snapshot.positions),
-        })
+        rows.append(
+            {
+                "date": snapshot.date,
+                "cash": float(snapshot.cash),
+                "total_value": total_value,
+                "daily_return": float(snapshot.daily_return),
+                "cumulative_return": float(snapshot.cumulative_return),
+                "drawdown": float(drawdown),
+                "position_count": len(snapshot.positions),
+            }
+        )
     return rows
 
 
@@ -270,21 +303,23 @@ def _build_trades(result: BacktestResult) -> List[Dict[str, Any]]:
     rows = []
     for trade in result.trades:
         action = trade.action.name if isinstance(trade.action, OrderAction) else str(trade.action)
-        rows.append({
-            "date": trade.date,
-            "symbol": trade.symbol,
-            "action": action,
-            "price": float(trade.price),
-            "quantity": int(trade.quantity),
-            "trade_value": float(trade.trade_value),
-            "total_cost": float(trade.total_cost),
-            "commission": float(trade.commission),
-            "stamp_tax": float(trade.stamp_tax),
-            "transfer_fee": float(trade.transfer_fee),
-            "slippage_cost": float(trade.slippage_cost),
-            "reject_reason": trade.reject_reason,
-            "reason": getattr(trade, "reason", ""),
-        })
+        rows.append(
+            {
+                "date": trade.date,
+                "symbol": trade.symbol,
+                "action": action,
+                "price": float(trade.price),
+                "quantity": int(trade.quantity),
+                "trade_value": float(trade.trade_value),
+                "total_cost": float(trade.total_cost),
+                "commission": float(trade.commission),
+                "stamp_tax": float(trade.stamp_tax),
+                "transfer_fee": float(trade.transfer_fee),
+                "slippage_cost": float(trade.slippage_cost),
+                "reject_reason": trade.reject_reason,
+                "reason": getattr(trade, "reason", ""),
+            }
+        )
     return rows
 
 
@@ -293,18 +328,20 @@ def _build_positions(result: BacktestResult) -> List[Dict[str, Any]]:
     for snapshot in result.daily_snapshots:
         total_value = float(snapshot.total_value)
         for symbol, position in snapshot.positions.items():
-            rows.append({
-                "date": snapshot.date,
-                "symbol": symbol,
-                "quantity": int(position.quantity),
-                "avg_cost": float(position.avg_cost),
-                "market_value": float(position.market_value),
-                "weight": _safe_div(float(position.market_value), total_value),
-                "holding_days": int(position.holding_days),
-                "highest_price": float(position.highest_price),
-                "lowest_price": float(position.lowest_price),
-                "initial_quantity": int(getattr(position, "initial_quantity", 0) or position.quantity),
-            })
+            rows.append(
+                {
+                    "date": snapshot.date,
+                    "symbol": symbol,
+                    "quantity": int(position.quantity),
+                    "avg_cost": float(position.avg_cost),
+                    "market_value": float(position.market_value),
+                    "weight": _safe_div(float(position.market_value), total_value),
+                    "holding_days": int(position.holding_days),
+                    "highest_price": float(position.highest_price),
+                    "lowest_price": float(position.lowest_price),
+                    "initial_quantity": int(getattr(position, "initial_quantity", 0) or position.quantity),
+                }
+            )
     return rows
 
 

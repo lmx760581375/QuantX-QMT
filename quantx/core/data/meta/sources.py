@@ -6,6 +6,7 @@ import pandas as pd
 
 from quantx.core.data.baostock_client import BaoStockClient
 from quantx.core.data.meta.store import normalize_symbol
+from quantx.core.data.qmt_client import QMTClient
 
 
 class MetaSourceError(RuntimeError):
@@ -28,6 +29,21 @@ class BaoStockMetaSource:
             "delist_date": frame.get("outDate"),
             "source": "baostock",
         })
+
+
+class QMTMetaSource:
+    def fetch_security_master(self, sectors: list[str] | None = None) -> pd.DataFrame:
+        try:
+            with QMTClient() as client:
+                frame = client.query_security_master(sectors=sectors)
+        except Exception as exc:
+            raise MetaSourceError(f"QMT security master fetch failed: {exc}") from exc
+        if frame.empty:
+            raise MetaSourceError("QMT security master fetch returned empty data")
+        frame = frame.copy()
+        frame["symbol"] = frame["symbol"].map(normalize_symbol)
+        frame["source"] = "qmt"
+        return frame
 
 
 class AkShareMetaSource:

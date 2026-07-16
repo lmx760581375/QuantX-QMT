@@ -32,8 +32,49 @@ data:
   - --progress-every
   - '1'
   - --json
+predictions:
+  enabled: true
+  timeout_seconds: 21600
+  jobs:
+  - name: path_sequence_top7_prediction_store
+    command:
+    - python
+    - -m
+    - quantx.tools.generate_path_sequence_predictions
+    - --panel
+    - .tmp/quantx-research/path-sequence-ranker-v2/scored_panel_v2_with_aux.parquet
+    - --signal-date
+    - all
+    - --output
+    - artifacts/predictions/path_sequence_top7_bridge/latest.json
+    - --manifest
+    - artifacts/predictions/path_sequence_top7_bridge/latest.manifest.json
+    - --score-mode
+    - grid0878
+    - --topk-pool
+    - '200'
+    - --min-records
+    - '20'
+  - name: active_value_brick_liquidity_rule_scores
+    command:
+    - python
+    - -m
+    - quantx.tools.refresh_active_brick_liquidity_scores
+    - --oos-start
+    - '2025-01-02'
+    - --end
+    - '{trade_date}'
+    - --metadata-output
+    - data/derived/active_value_brick_ml/liquidity_rule_turnover20_60_mv20_80_metadata.json
+    - --min-rows
+    - '900'
+    - --min-signal-days
+    - '100'
+    - --json
 strategies:
   include:
+  - configs/strategies/generated/active_value_brick_liquidity_rule_turnover20_60_mv20_80_stop6_2025_2026.yaml
+  - configs/strategies/generated/path_sequence_top7_bridge_v1.yaml
   - configs/strategies/generated/stocktradebyz_mainboard_stability_explore/bbi_short_long_base_pos5_topk4_close_strict_2020_2026_mainboard.yaml
   - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_scale_12_keep85_recommended.yaml
   - configs/strategies/generated/stocktradebyz_bbi_short_long_base_pos5_topk4_close_strict_2016_2026_mainboard_fast_exit_weak_early_hold_narrow.yaml

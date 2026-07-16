@@ -245,6 +245,91 @@ def test_build_formula_strategy_watchlist_disables_precompute():
     assert strategy.precompute_stock_signals is False
 
 
+def test_external_score_selector_uses_prior_session_scores(tmp_path):
+    scores = tmp_path / "scores.csv"
+    pd.DataFrame([
+        {"date": "2021-01-04", "instrument": "SZ000001", "score": 0.3},
+        {"date": "2021-01-04", "instrument": "SZ000002", "score": 0.9},
+        {"date": "2021-01-05", "instrument": "SZ000001", "score": 1.1},
+    ]).to_csv(scores, index=False)
+    runtime = _runtime()
+    context = _Context(runtime)
+    strategy = build_formula_strategy({
+        "fields": {"close": "$close"},
+        "selector": {
+            "mode": "external_score",
+            "path": str(scores),
+            "score_col": "score",
+            "lag": 1,
+            "sort": "score_desc",
+            "topk": 1,
+        },
+        "rebalance": {"type": "equal_weight", "max_positions": 1},
+        "execution": {},
+    }, cost=None)
+    strategy.prepare(context)
+
+    selection = strategy.selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
+
+    assert [signal.symbol for signal in selection.signals] == ["SZ000002"]
+    assert selection.signals[0].score == pytest.approx(0.9)
+    assert selection.signals[0].signal_date == "2021-01-04"
+    assert strategy.precompute_stock_signals is False
+
+
+def test_external_score_selector_applies_score_floor_and_records_candidates(tmp_path):
+    scores = tmp_path / "scores.csv"
+    pd.DataFrame([
+        {"date": "2021-01-04", "instrument": "SZ000001", "score": 0.01},
+        {"date": "2021-01-04", "instrument": "SZ000002", "score": 0.03},
+        {"date": "2021-01-04", "instrument": "SZ000003", "score": 0.02},
+    ]).to_csv(scores, index=False)
+    runtime = _runtime()
+    context = _Context(runtime)
+    strategy = build_formula_strategy({
+        "fields": {"close": "$close"},
+        "selector": {
+            "mode": "external_score",
+            "path": str(scores),
+            "score_col": "score",
+            "score_floor": 0.02,
+            "lag": 1,
+            "sort": "score_desc",
+            "topk": 5,
+        },
+        "rebalance": {"type": "equal_weight", "max_positions": 2},
+        "execution": {},
+    }, cost=None)
+
+    strategy.prepare(context)
+    selection = strategy.selector.act(PolicyState(date="2021-01-05", market_data=pd.DataFrame(), context=context))
+
+    assert [signal.symbol for signal in selection.signals] == ["SZ000002", "SZ000003"]
+    rows = context.get_daily_selection_candidates()
+    assert rows[0]["mode"] == "external_score_daily_signal"
+    assert rows[0]["raw_candidate_count"] == 2
+
+
+def test_compile_strategy_config_accepts_external_score_without_where(tmp_path):
+    scores = tmp_path / "scores.csv"
+    pd.DataFrame([{"date": "2021-01-04", "instrument": "SZ000001", "score": 1.0}]).to_csv(scores, index=False)
+
+    spec = compile_strategy_config({
+        "fields": {"close": "$close"},
+        "selector": {
+            "mode": "external_score",
+            "path": str(scores),
+            "score_col": "score",
+            "lag": 1,
+        },
+        "execution": {},
+    })
+
+    assert spec.selector["mode"] == "external_score"
+    assert spec.selector["path"] == str(scores)
+    assert spec.formula_order == []
+
+
 def test_compile_strategy_config_requires_watchlist_confirm():
     with pytest.raises(ConfigStrategyError, match="selector.confirm is required"):
         compile_strategy_config({
@@ -328,6 +413,16 @@ def test_compile_strategy_config_rejects_partial_sell_without_position_pct():
                     "action": "sell_to_position_pct",
                 }],
             },
+        })
+
+
+def test_compile_strategy_config_rejects_negative_max_open_gap():
+    with pytest.raises(ConfigStrategyError, match="buy.max_open_gap_pct must be non-negative"):
+        compile_strategy_config({
+            "fields": {"open": "$open", "close": "$close"},
+            "signals": {"buy_signal": "close > 1"},
+            "selector": {"where": "buy_signal", "score": "close"},
+            "execution": {"buy": {"max_open_gap_pct": -0.01}},
         })
 
 
@@ -562,6 +657,16 @@ def test_compile_strategy_config_rejects_unknown_deal_price():
         })
 
 
+def test_compile_strategy_config_rejects_unknown_sell_decision_price():
+    with pytest.raises(ConfigStrategyError, match="execution.sell_decision_price"):
+        compile_strategy_config({
+            "fields": {"open": "$open", "close": "$close"},
+            "signals": {"buy_signal": "close > 1"},
+            "selector": {"where": "buy_signal"},
+            "execution": {"deal_price": "open", "sell_decision_price": "missing_price"},
+        })
+
+
 def test_compile_strategy_config_rejects_unknown_buy_rule_variable():
     with pytest.raises(ConfigStrategyError, match="Buy rule references unknown variables"):
         compile_strategy_config({
@@ -793,6 +898,47 @@ def test_rule_execution_uses_allocation_weights_for_buy_sizing():
     assert quantities == {"SZ000001": 8000, "SZ000002": 2000}
 
 
+def test_rule_execution_skips_buy_when_open_gap_exceeds_threshold():
+    index = pd.MultiIndex.from_product(
+        [pd.to_datetime(["2021-01-04", "2021-01-05"]), ["SZ000001", "SZ000002"]],
+        names=["datetime", "instrument"],
+    )
+    quote = pd.DataFrame({
+        "$open": [10.0, 10.0, 10.4, 10.2],
+        "$close": [10.0, 10.0, 10.4, 10.2],
+    }, index=index)
+
+    class _Exchange:
+        def __init__(self):
+            self.quote = quote
+
+        def is_limit_up(self, symbol, date):
+            return False
+
+    class _RuntimeContext:
+        def __init__(self):
+            self.exchange = _Exchange()
+            self.trade_dates = ["2021-01-04", "2021-01-05"]
+
+    state = PolicyState(
+        date="2021-01-05",
+        market_data=pd.DataFrame({"$open": [10.4, 10.2]}, index=["SZ000001", "SZ000002"]),
+        account=AccountSnapshot(cash=100000.0, total_value=100000.0),
+        context=_RuntimeContext(),
+    )
+    execution = RuleExecution(
+        [],
+        cost=None,
+        deal_price="open",
+        cash_use_ratio=1.0,
+        max_open_gap_pct=0.03,
+    )
+
+    orders = execution.act(state, WeightAllocation(weights={"SZ000001": 0.5, "SZ000002": 0.5}))
+
+    assert [order.symbol for order in orders.orders] == ["SZ000002"]
+
+
 def test_rule_execution_sell_rule_can_use_position_peak_state():
     index = pd.MultiIndex.from_product(
         [pd.to_datetime(["2021-01-04"]), ["SZ000001"]],
@@ -836,6 +982,52 @@ def test_rule_execution_sell_rule_can_use_position_peak_state():
     assert len(orders.orders) == 1
     assert orders.orders[0].symbol == "SZ000001"
     assert orders.orders[0].reason == "trail_peak"
+
+
+def test_rule_execution_sell_decision_price_uses_prior_close_but_order_uses_open():
+    index = pd.MultiIndex.from_product(
+        [pd.to_datetime(["2021-01-04", "2021-01-05"]), ["SZ000001"]],
+        names=["datetime", "instrument"],
+    )
+    quote = pd.DataFrame({"$open": [10.0, 10.2], "$close": [9.3, 10.2]}, index=index)
+
+    class _Exchange:
+        def __init__(self):
+            self.quote = quote
+
+    class _RuntimeContext:
+        def __init__(self):
+            self.exchange = _Exchange()
+            self.trade_dates = ["2021-01-04", "2021-01-05"]
+
+    state = PolicyState(
+        date="2021-01-05",
+        market_data=pd.DataFrame({"$open": [10.2], "$close": [10.2]}, index=["SZ000001"]),
+        account=AccountSnapshot(cash=0.0, total_value=10200.0),
+        positions={
+            "SZ000001": PositionSnapshot(
+                symbol="SZ000001",
+                quantity=1000,
+                avg_cost=10.0,
+                market_value=10200.0,
+                holding_days=2,
+            )
+        },
+        context=_RuntimeContext(),
+    )
+    execution = RuleExecution(
+        [{"name": "prior_close_stop", "when": "pnl_pct < -0.06"}],
+        cost=None,
+        deal_price="open",
+        sell_decision_price="close",
+    )
+
+    orders = execution.act(state, WeightAllocation(weights={}))
+
+    assert len(orders.orders) == 1
+    assert orders.orders[0].symbol == "SZ000001"
+    assert orders.orders[0].price == pytest.approx(10.2)
+    assert orders.orders[0].reason == "prior_close_stop"
 
 
 def test_rule_execution_partial_sell_to_position_pct_uses_initial_quantity():

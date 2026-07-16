@@ -16,8 +16,8 @@ class _CalendarExchange:
     def get_trading_dates(self, start, end):
         return [date for date in self.dates if start <= date <= end]
 
-    def load_quote_data(self, symbols, start, end):
-        self.load_calls.append((symbols, start, end))
+    def load_quote_data(self, symbols, start, end, extra_fields=None):
+        self.load_calls.append((symbols, start, end, extra_fields))
 
 
 def test_context_rejects_provider_missing_lookback_window():
@@ -36,4 +36,19 @@ def test_context_allows_calendar_gap_for_non_trading_days():
 
     context.load_data(["SH600000"], "2020-01-06", "2020-01-08", look_back_days=2)
 
-    assert exchange.load_calls == [(["SH600000"], "2020-01-04", "2020-01-08")]
+    assert exchange.load_calls == [(["SH600000"], "2020-01-04", "2020-01-08", [])]
+
+
+def test_context_loads_alias_source_fields_as_extra_quote_fields():
+    exchange = _CalendarExchange(["2020-01-06", "2020-01-07", "2020-01-08"])
+    context = BacktestContext(exchange)
+
+    context.load_data(
+        ["SH600000"],
+        "2020-01-06",
+        "2020-01-08",
+        look_back_days=0,
+        field_aliases={"turnover_rate": "$turnover_rate"},
+    )
+
+    assert exchange.load_calls == [(["SH600000"], "2020-01-06", "2020-01-08", ["$turnover_rate"])]

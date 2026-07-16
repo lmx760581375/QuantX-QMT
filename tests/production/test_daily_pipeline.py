@@ -183,6 +183,89 @@ def test_daily_pipeline_can_skip_data_update_command(tmp_path):
     assert result.data_update["update_command"]["message"] == "data update skipped by request"
 
 
+def test_daily_pipeline_runs_prediction_jobs_before_signals(tmp_path):
+    provider = _provider(tmp_path)
+    marker = tmp_path / "prediction_marker.json"
+    config_path = tmp_path / "configs" / "strategies" / "demo.yaml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        yaml.safe_dump({
+            "name": "demo_strategy",
+            "description": "测试策略",
+            "data": {"provider_uri": str(provider), "universe": ["SZ000001"], "start": "2021-01-04"},
+            "fields": {"close": "$close"},
+            "signals": {"buy_signal": "close > 0"},
+            "selector": {"where": "buy_signal"},
+        }, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    profile_path = tmp_path / "configs" / "production" / "daily.yaml"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        yaml.safe_dump({
+            "name": "unit",
+            "daily_runs_dir": "daily_runs",
+            "data": {"provider_uri": str(provider), "update_mode": "local_verify_only"},
+            "predictions": {
+                "enabled": True,
+                "jobs": [{
+                    "name": "unit_prediction",
+                    "command": [
+                        "python",
+                        "-c",
+                        f"from pathlib import Path; Path(r'{marker}').write_text('{{trade_date}}|{{run_dir}}', encoding='utf-8')",
+                    ],
+                }],
+            },
+            "strategies": {"include": [str(config_path.relative_to(tmp_path))]},
+            "notification": {"enabled": False},
+        }, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    profile = load_profile(profile_path, project_root=tmp_path)
+    pipeline = DailyPipeline(profile, strategy_runner=_fake_runner)
+
+    result = pipeline.run(stage="all", dry_run=False)
+
+    run_dir = Path(result.run_dir)
+    jobs = json.loads((run_dir / "prediction_jobs.json").read_text(encoding="utf-8"))
+    assert result.ok is True
+    assert jobs[0]["name"] == "unit_prediction"
+    assert jobs[0]["ok"] is True
+    assert marker.read_text(encoding="utf-8").startswith("2021-01-05|")
+
+
+def test_daily_profile_loads_prediction_jobs(tmp_path):
+    provider = _provider(tmp_path)
+    config_path = tmp_path / "configs" / "strategies" / "demo.yaml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("name: demo\n", encoding="utf-8")
+    profile_path = tmp_path / "configs" / "production" / "daily.yaml"
+    profile_path.parent.mkdir(parents=True)
+    profile_path.write_text(
+        yaml.safe_dump({
+            "name": "unit",
+            "data": {"provider_uri": str(provider)},
+            "predictions": {
+                "enabled": True,
+                "timeout_seconds": 777,
+                "jobs": [{"name": "pred", "command": ["python", "-V"], "required": False}],
+            },
+            "strategies": {"include": [str(config_path.relative_to(tmp_path))]},
+            "notification": {"enabled": False},
+        }, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    profile = load_profile(profile_path, project_root=tmp_path)
+
+    assert len(profile.prediction_jobs) == 1
+    assert profile.prediction_jobs[0].name == "pred"
+    assert profile.prediction_jobs[0].timeout_seconds == 777
+    assert profile.prediction_jobs[0].required is False
+
+
 def test_daily_profile_loads_mail_yaml(tmp_path):
     provider = _provider(tmp_path)
     config_path = tmp_path / "configs" / "strategies" / "demo.yaml"

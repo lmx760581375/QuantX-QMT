@@ -151,10 +151,7 @@ def _strategy_markdown(strategy: Dict[str, Any]) -> List[str]:
     lines.extend(_annual_returns_markdown(strategy.get("annual_returns") or []))
     candidates = strategy.get("selection_candidates") or {}
     if candidates:
-        lines.append(
-            f"- 公式候选: 交易日 `{candidates.get('date')}` 使用信号日 `{candidates.get('signal_date')}`，"
-            f"原始命中 {candidates.get('raw_candidate_count', 0)} 只，最终选股 {candidates.get('selected_count', 0)} 只"
-        )
+        lines.append(_candidate_summary_markdown(candidates))
     next_candidates = strategy.get("next_session_candidates") or {}
     if next_candidates:
         lines.append(
@@ -165,8 +162,10 @@ def _strategy_markdown(strategy: Dict[str, Any]) -> List[str]:
     lines.extend(_items_markdown("建议买入", strategy.get("buys") or [], _trade_line))
     lines.extend(_items_markdown("建议卖出", strategy.get("sells") or [], _trade_line))
     if candidates:
-        lines.extend(_items_markdown("公式最终选股", candidates.get("selected_candidates") or [], _candidate_line, limit=10))
-        lines.extend(_items_markdown("公式原始候选", candidates.get("raw_candidates") or [], _candidate_line, limit=10))
+        selected_title = "预测最终候选" if candidates.get("mode") == "frozen_predictions" else "公式最终选股"
+        raw_title = "预测原始候选" if candidates.get("mode") == "frozen_predictions" else "公式原始候选"
+        lines.extend(_items_markdown(selected_title, candidates.get("selected_candidates") or [], _candidate_line, limit=10))
+        lines.extend(_items_markdown(raw_title, candidates.get("raw_candidates") or [], _candidate_line, limit=10))
     if next_candidates:
         lines.extend(_items_markdown("下一交易日公式最终选股", next_candidates.get("selected_candidates") or [], _candidate_line, limit=10))
     lines.extend(_items_markdown("继续持仓", strategy.get("positions") or [], _position_line, limit=12))
@@ -208,7 +207,7 @@ def _strategy_html(strategy: Dict[str, Any]) -> str:
         _next_session_guide_html(strategy.get("next_session_guide") or {}),
         "<h3>收益曲线</h3>",
         f"<div class=\"chart\">{_equity_svg(strategy.get('equity_curve') or [])}</div>",
-        "<h3>公式选股解释</h3>",
+        f"<h3>{html.escape(_candidate_section_title(candidates))}</h3>",
         _candidate_summary_html(candidates),
         _html_table(["股票", "名称", "行业", "分数", "公式命中"], [
             _candidate_cells(row) for row in (candidates.get("selected_candidates") or [])[:10]
@@ -320,6 +319,25 @@ def _strategy_title(strategy: Dict[str, Any]) -> str:
     return str(strategy.get("strategy_name") or "unknown")
 
 
+def _candidate_summary_markdown(candidates: Dict[str, Any]) -> str:
+    if candidates.get("mode") == "frozen_predictions":
+        suffix = ""
+        if candidates.get("status") == "missing_prediction":
+            suffix = f"；当前信号日无预测记录，最近可用预测日 `{candidates.get('latest_available_signal_date') or '-'}`"
+        return (
+            f"- 预测候选: 交易日 `{candidates.get('date')}` 查询信号日 `{candidates.get('signal_date')}`，"
+            f"原始命中 {candidates.get('raw_candidate_count', 0)} 只，最终选股 {candidates.get('selected_count', 0)} 只{suffix}"
+        )
+    return (
+        f"- 公式候选: 交易日 `{candidates.get('date')}` 使用信号日 `{candidates.get('signal_date')}`，"
+        f"原始命中 {candidates.get('raw_candidate_count', 0)} 只，最终选股 {candidates.get('selected_count', 0)} 只"
+    )
+
+
+def _candidate_section_title(candidates: Dict[str, Any]) -> str:
+    return "预测候选解释" if candidates.get("mode") == "frozen_predictions" else "公式选股解释"
+
+
 def _trade_line(row: Dict[str, Any]) -> str:
     return (
         f"{row.get('symbol')} {row.get('name') or ''} / {row.get('industry_name') or '-'}，"
@@ -420,6 +438,8 @@ def _candidate_summary_html(candidates: Dict[str, Any], daily_signal: bool = Fal
         )
     else:
         stale = "" if candidates.get("is_latest_trade_date", True) else " · 注意：当前展示为最近一次候选，不是最新交易日"
+        if candidates.get("status") == "missing_prediction":
+            stale += f" · 当前信号日无预测记录，最近可用预测日 {candidates.get('latest_available_signal_date') or '-'}"
         date_text = (
             f"交易日: <code>{html.escape(str(candidates.get('date')))}</code> · "
             f"信号日: <code>{html.escape(str(candidates.get('signal_date')))}</code> · "

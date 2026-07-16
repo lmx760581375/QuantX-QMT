@@ -113,6 +113,69 @@ def test_formula_runtime_group_mean_with_multi_membership_concept_group():
     assert np.isfinite(result["concept_rank"]).all()
 
 
+def test_formula_runtime_market_breadth_right_side_and_kdj_low():
+    index = pd.MultiIndex.from_product(
+        [pd.date_range("2021-01-01", periods=3), ["A", "B", "C"]],
+        names=["datetime", "instrument"],
+    )
+    frame = pd.DataFrame({
+        "$close": [10, 8, 12, 11, 9, 7, 13, 12, np.nan],
+    }, index=index)
+    runtime = FactorRuntime(MarketPanel.from_frame(frame))
+    result = runtime.compute_formulas({
+        "short_trend": "Mean(close, 2)",
+        "long_trend": "Mean(close, 3) - 0.5",
+        "right": "MarketBreadth(close, short_trend, long_trend)",
+        "j": "Where(close >= 11, 10, 30)",
+        "right_kdj_low": "MarketBreadth(close, short_trend, long_trend, j, 13)",
+        "tradable": "(close > 0) and (right >= 0.5)",
+    })
+
+    np.testing.assert_allclose(result["right"], [1.0, 2 / 3, 1.0], rtol=1e-6)
+    np.testing.assert_allclose(result["right_kdj_low"], [1 / 3, 1 / 3, 1.0], rtol=1e-6)
+    np.testing.assert_array_equal(
+        result["tradable"],
+        np.array([
+            [True, True, True],
+            [True, True, True],
+            [True, True, False],
+        ]),
+    )
+
+
+def test_formula_runtime_market_concentration_metrics():
+    index = pd.MultiIndex.from_product(
+        [pd.date_range("2021-01-01", periods=2), ["A", "B", "C", "D"]],
+        names=["datetime", "instrument"],
+    )
+    frame = pd.DataFrame({
+        "$close": [10, 20, 30, 40, 11, 18, 33, 44],
+        "$amount": [100, 200, 300, 400, 100, 100, 600, 200],
+        "$float_mv": [1, 1, 2, 6, 1, 1, 2, 6],
+    }, index=index)
+    runtime = FactorRuntime(MarketPanel.from_frame(frame))
+    runtime.values["industry"] = np.array([0, 0, 1, 2], dtype=np.int32)
+    result = runtime.compute_formulas({
+        "ret1": "close / Ref(close, 1) - 1",
+        "total_amount": "MarketTotalAmount(amount)",
+        "industry_cr2": "MarketIndustryCR(amount, industry, 2)",
+        "stock_hhi": "MarketHHI(amount)",
+        "csd": "MarketCSD(ret1, float_mv)",
+    })
+
+    np.testing.assert_allclose(result["total_amount"], [1000.0, 1000.0])
+    np.testing.assert_allclose(result["industry_cr2"], [0.7, 0.8])
+    np.testing.assert_allclose(result["stock_hhi"], [3000.0, 4200.0])
+    assert np.isnan(result["csd"][0])
+
+    returns = np.array([0.1, -0.1, 0.1, 0.1], dtype=np.float32)
+    weights = np.array([1, 1, 2, 6], dtype=np.float32)
+    weights = weights / weights.sum()
+    mu = float(np.sum(weights * returns))
+    expected_csd = float(np.sqrt(np.sum(weights * (returns - mu) ** 2)))
+    np.testing.assert_allclose(result["csd"][1], expected_csd, rtol=1e-6)
+
+
 def test_formula_runtime_rejects_unsafe_syntax():
     runtime = FactorRuntime(_panel())
     with pytest.raises(FormulaError):
@@ -230,6 +293,25 @@ def test_formula_runtime_sum_and_kdjj():
     assert result["j"].shape == (3, 2)
     assert np.isfinite(result["j"]).all()
     np.testing.assert_allclose(result["j"][0], [50.0, 50.0], rtol=1e-5)
+
+
+def test_kdjj_accepts_history_shorter_than_window():
+    index = pd.MultiIndex.from_product(
+        [pd.date_range("2024-01-02", periods=3), ["A"]],
+        names=["datetime", "instrument"],
+    )
+    frame = pd.DataFrame({
+        "$high": [11.0, 12.0, 13.0],
+        "$low": [9.0, 10.0, 11.0],
+        "$close": [10.0, 11.0, 12.0],
+    }, index=index)
+
+    result = FactorRuntime(MarketPanel.from_frame(frame)).compute_formulas({
+        "j": "KDJJ(high, low, close, 9)",
+    })
+
+    assert result["j"].shape == (3, 1)
+    assert np.isfinite(result["j"]).all()
 
 
 def test_formula_runtime_bbi_uptrend():

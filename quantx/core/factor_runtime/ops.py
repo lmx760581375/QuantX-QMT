@@ -33,23 +33,39 @@ def ref(x, n: int):
 
 def rolling_min(x, window: int):
     arr = ensure_float(x)
+    window = _bounded_window(arr, window)
+    if arr.shape[0] == 0:
+        return arr.copy()
     if bn is not None:
-        return bn.move_min(arr, window=int(window), min_count=1, axis=0).astype(np.float32)
-    return _pandas_rolling(arr, int(window), "min")
+        return bn.move_min(arr, window=window, min_count=1, axis=0).astype(np.float32)
+    return _pandas_rolling(arr, window, "min")
 
 
 def rolling_max(x, window: int):
     arr = ensure_float(x)
+    window = _bounded_window(arr, window)
+    if arr.shape[0] == 0:
+        return arr.copy()
     if bn is not None:
-        return bn.move_max(arr, window=int(window), min_count=1, axis=0).astype(np.float32)
-    return _pandas_rolling(arr, int(window), "max")
+        return bn.move_max(arr, window=window, min_count=1, axis=0).astype(np.float32)
+    return _pandas_rolling(arr, window, "max")
 
 
 def rolling_mean(x, window: int):
     arr = ensure_float(x)
+    window = _bounded_window(arr, window)
+    if arr.shape[0] == 0:
+        return arr.copy()
     if bn is not None:
-        return bn.move_mean(arr, window=int(window), min_count=1, axis=0).astype(np.float32)
-    return _pandas_rolling(arr, int(window), "mean")
+        return bn.move_mean(arr, window=window, min_count=1, axis=0).astype(np.float32)
+    return _pandas_rolling(arr, window, "mean")
+
+
+def _bounded_window(arr: np.ndarray, window: int) -> int:
+    value = int(window)
+    if value <= 0:
+        raise ValueError("rolling window must be positive")
+    return min(value, max(1, int(arr.shape[0])))
 
 
 def atr(high, low, close, window: int):
@@ -314,6 +330,119 @@ def cs_count(x):
     if arr.dtype == bool:
         return np.sum(arr, axis=1).astype(np.float32)
     return np.sum(~np.isnan(arr), axis=1).astype(np.float32)
+
+
+def market_breadth(close, short_trend, long_trend, kdj_j=None, j_threshold: float = 13.0):
+    """Market breadth share for right-side trend and optional KDJ-low setup."""
+    cls = ensure_float(close)
+    short = _align_market_input(short_trend, cls, "short_trend")
+    long = _align_market_input(long_trend, cls, "long_trend")
+    if cls.ndim != 2:
+        raise ValueError("MarketBreadth expects close shape [date, instrument]")
+    valid = np.isfinite(cls) & np.isfinite(short) & np.isfinite(long)
+    signal = valid & (cls > long) & (short > long)
+    if kdj_j is not None:
+        kdj = _align_market_input(kdj_j, cls, "kdj_j")
+        valid &= np.isfinite(kdj)
+        signal &= np.isfinite(kdj) & (kdj < np.float32(float(j_threshold)))
+    return _cross_section_ratio(signal, valid)
+
+
+def market_total_amount(amount):
+    """Daily full-market turnover amount."""
+    amt = ensure_float(amount)
+    if amt.ndim != 2:
+        raise ValueError("MarketTotalAmount expects amount shape [date, instrument]")
+    valid = np.isfinite(amt)
+    sums = np.nansum(np.where(valid, amt, np.nan), axis=1).astype(np.float32)
+    return np.where(valid.any(axis=1), sums, np.nan).astype(np.float32)
+
+
+def market_industry_cr(amount, industry, topn: int = 3):
+    """Share of turnover held by the top-N turnover industries each day."""
+    amt = ensure_float(amount)
+    if amt.ndim != 2:
+        raise ValueError("MarketIndustryCR expects amount shape [date, instrument]")
+    codes = np.asarray(industry).astype(np.int32)
+    if codes.ndim != 1 or codes.shape[0] != amt.shape[1]:
+        raise ValueError("MarketIndustryCR expects industry shape [instrument]")
+    topn = int(topn)
+    if topn <= 0:
+        raise ValueError("topn must be positive")
+
+    valid_group = codes >= 0
+    if not valid_group.any():
+        return np.full(amt.shape[0], np.nan, dtype=np.float32)
+    group_count = int(np.nanmax(codes[valid_group])) + 1
+    out = np.full(amt.shape[0], np.nan, dtype=np.float32)
+    for i in range(amt.shape[0]):
+        row = amt[i]
+        valid = valid_group & np.isfinite(row) & (row > 0.0)
+        if not valid.any():
+            continue
+        sums = np.bincount(codes[valid], weights=row[valid], minlength=group_count)
+        total = float(np.sum(sums))
+        if total <= 0.0:
+            continue
+        take = np.sort(sums)[-min(topn, sums.size):]
+        out[i] = np.float32(float(np.sum(take)) / total)
+    return out
+
+
+def market_hhi(amount, scale: float = 10000.0):
+    """Turnover Herfindahl-Hirschman index on the 0-10000 scale."""
+    amt = ensure_float(amount)
+    if amt.ndim != 2:
+        raise ValueError("MarketHHI expects amount shape [date, instrument]")
+    valid = np.isfinite(amt) & (amt > 0.0)
+    clean = np.where(valid, amt, 0.0).astype(np.float32)
+    totals = np.sum(clean, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        shares = clean / totals[:, None]
+    hhi = np.sum(shares * shares, axis=1) * np.float32(float(scale))
+    return np.where(totals > 0.0, hhi, np.nan).astype(np.float32)
+
+
+def market_csd(ret, weight):
+    """Market-cap weighted cross-sectional dispersion."""
+    returns = ensure_float(ret)
+    weights = _align_market_input(weight, returns, "weight")
+    if returns.ndim != 2:
+        raise ValueError("MarketCSD expects ret shape [date, instrument]")
+    valid = np.isfinite(returns) & np.isfinite(weights) & (weights > 0.0)
+    clean_w = np.where(valid, weights, 0.0).astype(np.float32)
+    totals = np.sum(clean_w, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        w = clean_w / totals[:, None]
+    clean_ret = np.where(valid, returns, 0.0).astype(np.float32)
+    mu = np.sum(w * clean_ret, axis=1)
+    variance = np.sum(w * (clean_ret - mu[:, None]) ** 2, axis=1)
+    csd = np.sqrt(variance).astype(np.float32)
+    return np.where(totals > 0.0, csd, np.nan).astype(np.float32)
+
+
+def _cross_section_ratio(signal: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    counts = np.sum(valid, axis=1)
+    hits = np.sum(signal & valid, axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = hits / counts
+    return np.where(counts > 0, out, np.nan).astype(np.float32)
+
+
+def _align_market_input(x, target: np.ndarray, name: str) -> np.ndarray:
+    arr = ensure_float(x)
+    if target.ndim != 2:
+        raise ValueError(f"{name} target must have shape [date, instrument]")
+    if arr.ndim == 2:
+        if arr.shape != target.shape:
+            raise ValueError(f"{name} shape must match target shape")
+        return arr
+    if arr.ndim == 1:
+        if arr.shape[0] == target.shape[0]:
+            return np.broadcast_to(arr[:, None], target.shape).astype(np.float32)
+        if arr.shape[0] == target.shape[1]:
+            return np.broadcast_to(arr[None, :], target.shape).astype(np.float32)
+    raise ValueError(f"{name} must have shape [date, instrument], [date], or [instrument]")
 
 
 def cs_rank(x, pct: bool = False):

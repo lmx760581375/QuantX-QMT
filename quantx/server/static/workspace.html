@@ -351,10 +351,11 @@
         <button data-page="leaderboard" class="active" onclick="showPage('leaderboard')"><span>榜单</span><span class="nav-k">01</span></button>
         <button data-page="configs" onclick="showPage('configs')"><span>策略配置</span><span class="nav-k">02</span></button>
         <button data-page="reports" onclick="showPage('reports')"><span>收益报告</span><span class="nav-k">03</span></button>
-        <button data-page="trades" onclick="showPage('trades')"><span>交割明细</span><span class="nav-k">04</span></button>
-        <button data-page="symbol" onclick="showPage('symbol')"><span>个股 B/S</span><span class="nav-k">05</span></button>
-        <button data-page="patterns" onclick="showPage('patterns')"><span>形态分析</span><span class="nav-k">06</span></button>
-        <button data-page="data" onclick="showPage('data')"><span>数据层</span><span class="nav-k">07</span></button>
+        <button data-page="daily" onclick="showPage('daily')"><span>每日跟踪</span><span class="nav-k">04</span></button>
+        <button data-page="trades" onclick="showPage('trades')"><span>交割明细</span><span class="nav-k">05</span></button>
+        <button data-page="symbol" onclick="showPage('symbol')"><span>个股 B/S</span><span class="nav-k">06</span></button>
+        <button data-page="patterns" onclick="showPage('patterns')"><span>形态分析</span><span class="nav-k">07</span></button>
+        <button data-page="data" onclick="showPage('data')"><span>数据层</span><span class="nav-k">08</span></button>
       </nav>
     </aside>
     <main>
@@ -451,6 +452,40 @@
             <div class="panel-head"><h2>最大亏损交易</h2><span class="pill" id="lossCount"></span></div>
             <div class="table-wrap" id="topLossesTable"></div>
           </div>
+        </div>
+      </section>
+
+      <section id="page-daily" class="page">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>每日实盘跟踪</h2>
+            <div class="toolbar">
+              <select id="dailyRunSelect" onchange="selectDailyRun(this.value)"></select>
+              <button onclick="loadDailyRuns()">刷新</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="grid cols-4" id="dailyMetrics"></div>
+            <div class="desc" id="dailyStatusLine"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>策略最新状态</h2><span class="pill" id="dailyStrategyCount">0 策略</span></div>
+          <div class="table-wrap" id="dailyStrategiesTable"></div>
+        </div>
+        <div class="grid cols-2" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-head"><h2>当前持仓</h2><span class="pill" id="dailyHoldingCount">0 只</span></div>
+            <div class="table-wrap" id="dailyHoldingsTable"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>今日操作</h2><span class="pill" id="dailyOrderCount">0 笔</span></div>
+            <div class="table-wrap" id="dailyOrdersTable"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-head"><h2>下一交易日候选</h2><span class="pill" id="dailyCandidateCount">0 只</span></div>
+          <div class="table-wrap" id="dailyCandidatesTable"></div>
         </div>
       </section>
 
@@ -580,6 +615,9 @@
       reports: [],
       currentReportId: '',
       currentReport: null,
+      dailyRuns: [],
+      currentDailyRunId: '',
+      currentDailyRun: null,
       patternAnalyses: [],
       currentPatternAnalysisId: '',
       currentPatternAnalysis: null,
@@ -604,6 +642,7 @@
       leaderboard: '榜单',
       configs: '策略配置',
       reports: '收益报告',
+      daily: '每日跟踪',
       trades: '交割明细',
       symbol: '个股 B/S',
       patterns: '形态分析',
@@ -665,6 +704,7 @@
       if (page === 'trades') renderTrades();
       if (page === 'reports' && state.currentReport) renderReport();
       if (page === 'leaderboard') renderLeaderboard();
+      if (page === 'daily') renderDailyRun();
       if (page === 'patterns') renderPatternAnalysis();
       if (page === 'data') loadDataStatus();
     }
@@ -675,6 +715,7 @@
         await loadConfigs();
         setStatus(`配置 ${state.configs.length}，加载报告...`);
         loadDataStatus().catch(err => setStatus(`数据层加载失败: ${err.message}`));
+        loadDailyRuns().catch(err => setStatus(`每日跟踪加载失败: ${err.message}`));
         loadPatternAnalyses().catch(err => setStatus(`形态分析加载失败: ${err.message}`));
         await loadReports();
         const run = qs.get('run_id') || qs.get('run') || state.currentReportId;
@@ -687,7 +728,7 @@
           showPage('symbol');
           await loadSymbolDetail();
         }
-        setStatus(`配置 ${state.configs.length} · 战法 ${state.reports.length}`);
+        setStatus(`配置 ${state.configs.length} · 战法 ${state.reports.length} · 日报 ${state.dailyRuns.length}`);
       } catch (err) {
         setStatus(`加载失败: ${err.message}`);
         console.error(err);
@@ -1350,6 +1391,167 @@
       if (entryDate) params.set('focus_start', entryDate);
       if (exitDate) params.set('focus_end', exitDate);
       window.open(`/?${params.toString()}`, '_blank');
+    }
+
+    async function loadDailyRuns() {
+      state.dailyRuns = await api('/api/daily-runs');
+      const select = document.getElementById('dailyRunSelect');
+      if (!select) return;
+      select.innerHTML = state.dailyRuns.map(row => {
+        const value = `${row.date_key}/${row.profile}`;
+        return `<option value="${esc(value)}">${esc(row.date)} · ${esc(row.profile)} · ${num(row.strategy_count, 0)} 策略</option>`;
+      }).join('');
+      const requested = qs.get('daily') || state.currentDailyRunId || (state.dailyRuns[0] ? `${state.dailyRuns[0].date_key}/${state.dailyRuns[0].profile}` : '');
+      if (requested) await selectDailyRun(requested);
+      else renderDailyRun();
+    }
+
+    async function selectDailyRun(value) {
+      if (!value) return;
+      const [dateKey, profile] = String(value).split('/');
+      if (!dateKey || !profile) return;
+      state.currentDailyRunId = `${dateKey}/${profile}`;
+      const select = document.getElementById('dailyRunSelect');
+      if (select) select.value = state.currentDailyRunId;
+      state.currentDailyRun = await api(`/api/daily-runs/${encodeURIComponent(dateKey)}/${encodeURIComponent(profile)}`);
+      renderDailyRun();
+    }
+
+    function renderDailyRun() {
+      const run = state.currentDailyRun;
+      if (!run) {
+        document.getElementById('dailyMetrics').innerHTML = '<div class="empty">暂无每日流水线产物</div>';
+        document.getElementById('dailyStatusLine').textContent = '';
+        document.getElementById('dailyStrategyCount').textContent = '0 策略';
+        document.getElementById('dailyStrategiesTable').innerHTML = '<div class="empty">暂无策略状态</div>';
+        document.getElementById('dailyHoldingCount').textContent = '0 只';
+        document.getElementById('dailyHoldingsTable').innerHTML = '<div class="empty">暂无持仓</div>';
+        document.getElementById('dailyOrderCount').textContent = '0 笔';
+        document.getElementById('dailyOrdersTable').innerHTML = '<div class="empty">暂无操作</div>';
+        document.getElementById('dailyCandidateCount').textContent = '0 只';
+        document.getElementById('dailyCandidatesTable').innerHTML = '<div class="empty">暂无候选</div>';
+        return;
+      }
+      renderDailyMetrics(run);
+      renderDailyStrategies(run);
+      renderDailyHoldings(run);
+      renderDailyOrders(run);
+      renderDailyCandidates(run);
+    }
+
+    function renderDailyMetrics(run) {
+      const strategies = run.strategies || [];
+      const ok = run.status?.ok !== false;
+      const positions = flattenDailyPositions(run);
+      const orders = flattenDailyOrders(run);
+      const candidates = flattenDailyCandidates(run);
+      const rows = [
+        ['交易日', run.date || '-', run.profile || '', 'gold'],
+        ['策略数', num(strategies.length, 0), ok ? '流水线正常' : '流水线异常', ok ? 'gold' : 'bad'],
+        ['当前持仓', num(positions.length, 0), '模拟口径', ''],
+        ['今日操作', num(orders.length, 0), `候选 ${num(candidates.length, 0)} 只`, ''],
+      ];
+      document.getElementById('dailyMetrics').innerHTML = rows.map(([k, v, note, c]) => `<div class="panel metric"><div class="label">${k}</div><div class="value ${c}">${esc(v)}</div><div class="note">${esc(note)}</div></div>`).join('');
+      const data = run.data_update || {};
+      const status = run.status || {};
+      document.getElementById('dailyStatusLine').textContent = `数据 ${data.calendar_start || '-'} 至 ${data.calendar_end || '-'} · run_dir ${run.run_dir || '-'} · ${status.started_or_updated_at || ''}`;
+    }
+
+    function renderDailyStrategies(run) {
+      const rows = run.strategies || [];
+      document.getElementById('dailyStrategyCount').textContent = `${rows.length} 策略`;
+      if (!rows.length) {
+        document.getElementById('dailyStrategiesTable').innerHTML = '<div class="empty">暂无策略状态</div>';
+        return;
+      }
+      const html = rows.map(row => {
+        const title = row.strategy_title || row.display_title || row.title || row.strategy_name || '-';
+        const isPath = String(row.strategy_name || '').includes('path_sequence') || String(title).includes('路径');
+        return `<tr class="${isPath ? 'selected-row' : ''}">
+          <td class="left"><div class="strategy-title">${esc(title)}</div><div class="metric-line"><span>${esc(row.strategy_name || '')}</span><span>${esc(row.latest_date || '')}</span><span>${row.ok === false ? '异常' : '正常'}</span></div></td>
+          <td>${num(row.position_count, 0)}</td><td class="up">${num(row.buy_count_today, 0)}</td><td class="down">${num(row.sell_count_today, 0)}</td><td>${num(row.reject_count_today, 0)}</td>
+          <td>${num((row.next_session_candidates || {}).selected_count, 0)}</td><td class="left note-cell">${esc(row.description || '')}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('dailyStrategiesTable').innerHTML = `<table><thead><tr><th class="left">策略</th><th>持仓</th><th>买入</th><th>卖出</th><th>拒单</th><th>候选</th><th class="left">说明</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function renderDailyHoldings(run) {
+      const rows = flattenDailyPositions(run);
+      document.getElementById('dailyHoldingCount').textContent = `${rows.length} 只`;
+      if (!rows.length) {
+        document.getElementById('dailyHoldingsTable').innerHTML = '<div class="empty">暂无持仓</div>';
+        return;
+      }
+      const html = rows.map(row => `<tr>
+        <td class="left"><div class="strategy-title">${esc(row.symbol)}</div><div class="metric-line"><span>${esc(row.name || '')}</span><span>${esc(row.strategy_title)}</span></div></td>
+        <td>${num(row.quantity, 0)}</td><td>${num(row.avg_cost, 3)}</td><td>${num(row.current_price, 3)}</td><td>${num(row.market_value)}</td>
+        <td class="${cls(row.unrealized_return)}">${pct(row.unrealized_return)}</td><td>${num(row.holding_days, 0)}</td>
+      </tr>`).join('');
+      document.getElementById('dailyHoldingsTable').innerHTML = `<table><thead><tr><th class="left">股票</th><th>数量</th><th>成本</th><th>现价</th><th>市值</th><th>浮盈率</th><th>天数</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function renderDailyOrders(run) {
+      const rows = flattenDailyOrders(run);
+      document.getElementById('dailyOrderCount').textContent = `${rows.length} 笔`;
+      if (!rows.length) {
+        document.getElementById('dailyOrdersTable').innerHTML = '<div class="empty">暂无操作</div>';
+        return;
+      }
+      const html = rows.map(row => `<tr>
+        <td class="left"><div class="strategy-title">${esc(row.symbol)}</div><div class="metric-line"><span>${esc(row.name || '')}</span><span>${esc(row.strategy_title)}</span></div></td>
+        <td class="${row.action === 'BUY' ? 'up' : 'down'}">${esc(row.action)}</td><td>${num(row.price, 3)}</td><td>${num(row.quantity, 0)}</td><td>${num(row.trade_value)}</td><td class="left">${esc(row.reason || row.reject_reason || '')}</td>
+      </tr>`).join('');
+      document.getElementById('dailyOrdersTable').innerHTML = `<table><thead><tr><th class="left">股票</th><th>方向</th><th>价格</th><th>数量</th><th>金额</th><th class="left">原因</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function renderDailyCandidates(run) {
+      const rows = flattenDailyCandidates(run);
+      document.getElementById('dailyCandidateCount').textContent = `${rows.length} 只`;
+      if (!rows.length) {
+        document.getElementById('dailyCandidatesTable').innerHTML = '<div class="empty">暂无候选</div>';
+        return;
+      }
+      const html = rows.map(row => `<tr>
+        <td class="left"><div class="strategy-title">${esc(row.symbol)}</div><div class="metric-line"><span>${esc(row.name || '')}</span><span>${esc(row.strategy_title)}</span><span>${esc(row.signal_date || '')}</span></div></td>
+        <td>${num(row.score, 4)}</td><td>${row.where === false ? '否' : '是'}</td><td>${esc(row.status || '')}</td>
+      </tr>`).join('');
+      document.getElementById('dailyCandidatesTable').innerHTML = `<table><thead><tr><th class="left">股票</th><th>分数</th><th>命中</th><th>状态</th></tr></thead><tbody>${html}</tbody></table>`;
+    }
+
+    function flattenDailyPositions(run) {
+      return (run.strategies || []).flatMap(strategy => (strategy.positions || []).map(row => ({
+        ...row,
+        strategy_name: strategy.strategy_name,
+        strategy_title: strategy.strategy_title || strategy.display_title || strategy.title || strategy.strategy_name,
+      })));
+    }
+
+    function flattenDailyOrders(run) {
+      return (run.strategies || []).flatMap(strategy => [
+        ...(strategy.buys || []).map(row => ({...row, action: row.action || 'BUY'})),
+        ...(strategy.sells || []).map(row => ({...row, action: row.action || 'SELL'})),
+      ].map(row => ({
+        ...row,
+        strategy_name: strategy.strategy_name,
+        strategy_title: strategy.strategy_title || strategy.display_title || strategy.title || strategy.strategy_name,
+      })));
+    }
+
+    function flattenDailyCandidates(run) {
+      return (run.strategies || []).flatMap(strategy => {
+        const guide = strategy.next_session_guide || {};
+        const signalDate = guide.signal_date || guide.latest_date || (strategy.next_session_candidates || {}).date || '';
+        return [
+          ...(guide.new_buy_candidates || []).map(row => ({...row, status: '新买候选'})),
+          ...(guide.already_held_candidates || []).map(row => ({...row, status: '已持仓候选'})),
+        ].map(row => ({
+          ...row,
+          signal_date: signalDate,
+          strategy_name: strategy.strategy_name,
+          strategy_title: strategy.strategy_title || strategy.display_title || strategy.title || strategy.strategy_name,
+        }));
+      });
     }
 
     async function loadDataStatus() {

@@ -19,6 +19,8 @@ def run_update(args) -> Dict[str, Any]:
         results.append({"probe_akshare": service.probe_akshare()})
     if args.baostock_security_master:
         results.append(service.update_security_master_baostock(date=args.date).to_dict())
+    if args.qmt_security_master:
+        results.append(service.update_security_master_qmt(sectors=args.qmt_sector).to_dict())
     if args.security_master_csv:
         results.append(
             service.import_security_master_csv(
@@ -60,6 +62,8 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--date", help="Optional source date, e.g. 2026-06-25.")
     parser.add_argument("--probe", action="store_true", help="Probe online metadata sources without writing data.")
     parser.add_argument("--baostock-security-master", action="store_true", help="Fetch security master from BaoStock.")
+    parser.add_argument("--qmt-security-master", action="store_true", help="Fetch current security master names from QMT/xqshare.")
+    parser.add_argument("--qmt-sector", action="append", help="QMT sector to include; repeatable. Defaults to 沪深A股.")
     parser.add_argument("--security-master-csv", help="Import security master CSV.")
     parser.add_argument("--industry-csv", help="Import industry membership CSV.")
     parser.add_argument("--sector-csv", help="Import sector membership CSV.")

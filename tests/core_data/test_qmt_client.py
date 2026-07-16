@@ -94,3 +94,42 @@ def test_qmt_client_reuses_remote_catalog_and_calendar(monkeypatch, tmp_path):
         "SH",
         {"start_time": "20260701", "end_time": "20260702"},
     )
+
+
+def test_qmt_client_queries_security_master_names(monkeypatch, tmp_path):
+    class FakeXtData:
+        def get_stock_list_in_sector(self, sector):
+            return ["000609.SZ", "600289.SH"]
+
+        def get_instrument_detail(self, symbol):
+            return {
+                "000609.SZ": {
+                    "ExchangeID": "SZ",
+                    "InstrumentName": "*ST中迪",
+                    "OpenDate": "19961010",
+                    "ExpireDate": "99999999",
+                },
+                "600289.SH": {
+                    "ExchangeID": "SH",
+                    "InstrumentName": "ST信通",
+                    "OpenDate": "20000720",
+                    "ExpireDate": "99999999",
+                },
+            }[symbol]
+
+    class FakeRemote:
+        def __init__(self, **kwargs):
+            self.xtdata = FakeXtData()
+
+        def close(self):
+            pass
+
+    monkeypatch.setitem(sys.modules, "xqshare", SimpleNamespace(XtQuantRemote=FakeRemote))
+
+    with QMTClient(env_file=tmp_path / ".env") as client:
+        frame = client.query_security_master()
+
+    assert frame[["symbol", "name", "exchange", "board", "list_date"]].to_dict("records") == [
+        {"symbol": "SH600289", "name": "ST信通", "exchange": "SH", "board": "mainboard", "list_date": "2000-07-20"},
+        {"symbol": "SZ000609", "name": "*ST中迪", "exchange": "SZ", "board": "mainboard", "list_date": "1996-10-10"},
+    ]

@@ -4,6 +4,7 @@ import pandas as pd
 
 from quantx.core.data.meta import MetaStore
 from quantx.core.data.meta.service import MetaUpdateService
+import quantx.core.data.meta.service as meta_service
 from quantx.core.data.meta.store import normalize_symbol
 
 
@@ -112,3 +113,30 @@ def test_meta_csv_import_preserves_leading_zero_codes(tmp_path):
     meta = store.get_symbol_meta(["SZ000001"])
 
     assert meta.loc["SZ000001", "name"] == "平安银行"
+
+
+def test_meta_service_updates_security_master_from_qmt(monkeypatch, tmp_path):
+    class FakeQMTMetaSource:
+        def fetch_security_master(self, sectors=None):
+            assert sectors == ["沪深A股"]
+            return pd.DataFrame([
+                {
+                    "symbol": "SZ000609",
+                    "name": "*ST中迪",
+                    "exchange": "SZ",
+                    "board": "mainboard",
+                    "list_date": "1996-10-10",
+                    "delist_date": None,
+                }
+            ])
+
+    monkeypatch.setattr(meta_service, "QMTMetaSource", FakeQMTMetaSource)
+    store = MetaStore(tmp_path / "meta.sqlite")
+    service = MetaUpdateService(store)
+
+    result = service.update_security_master_qmt(sectors=["沪深A股"])
+    meta = store.get_symbol_meta(["SZ000609"])
+
+    assert result.ok is True
+    assert result.rows == 1
+    assert meta.loc["SZ000609", "name"] == "*ST中迪"

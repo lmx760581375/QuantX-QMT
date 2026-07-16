@@ -15,7 +15,7 @@ def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", required=True, help="Path to production profile YAML.")
     parser.add_argument("--trade-date", help="Override trade date, defaults to provider latest date.")
-    parser.add_argument("--stage", default="all", choices=["all", "data", "signals", "report", "mail"])
+    parser.add_argument("--stage", default="all", choices=["all", "data", "predictions", "signals", "report", "mail"])
     parser.add_argument("--strategy", help="Only run strategies whose path contains this text.")
     parser.add_argument("--symbol-limit", type=int, help="Limit symbols for smoke/dry runs.")
     parser.add_argument("--dry-run", action="store_true", help="Do not send email; still writes preview artifacts.")

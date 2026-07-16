@@ -26,6 +26,10 @@
 | 13 | 13_QUANTX_AGENT_SKILL_DESIGN.md | QuantX Codex Skill、Agent 工具接口、指标扩展与安装方案 | 待实现 |
 | 14 | 14_STRATEGY_SEARCH_2020_2026_RESULTS.md | 2020-2026 主板策略搜索结果、严格口径冠军与风险备选 | 持续 |
 | 16 | 16_TRADE_PATTERN_ML_ANALYSIS_DESIGN.md | 交易形态样本库、K 线柱子特征、监督学习/聚类分析与形态报告 | 待实现 |
+| 19 | 19_UNIFIED_METHOD_RESEARCH_BACKTEST_DESIGN.md | 规则、ML、DL、RL 的统一训练验证、模型产物、决策协议与回测接入设计 | 设计提案 |
+| 20 | 20_MARKET_WORLD_MODEL_DESIGN.md | 市场世界模型与跨策略状态建模方向 | 设计提案 |
+| 21 | 21_ALPHAMASTER_REFERENCE_INTEGRATION_DESIGN.md | AlphaMaster 参考集成、质量校验与 Web 展示增强 | 设计提案 |
+| 22 | 22_PATH_SEQUENCE_DAILY_OPERATIONS.md | Path Sequence milestone、日度跟踪、PredictionStore 与 DL 运维边界 | 已落地 |
 
 ## 项目目录结构
 
@@ -58,6 +62,10 @@ quantx/
 │       ├── 12_META_INDUSTRY_CONFIG_DESIGN.md
 │       ├── 13_QUANTX_AGENT_SKILL_DESIGN.md
 │       ├── 16_TRADE_PATTERN_ML_ANALYSIS_DESIGN.md
+│       ├── 19_UNIFIED_METHOD_RESEARCH_BACKTEST_DESIGN.md
+│       ├── 20_MARKET_WORLD_MODEL_DESIGN.md
+│       ├── 21_ALPHAMASTER_REFERENCE_INTEGRATION_DESIGN.md
+│       ├── 22_PATH_SEQUENCE_DAILY_OPERATIONS.md
 │       └── REVIEW_AND_IMPROVEMENTS.md
 ├── quantx/                     # 主包
 │   ├── __init__.py

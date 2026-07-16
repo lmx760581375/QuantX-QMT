@@ -1,0 +1,85 @@
+name: brick_v11_external_score_reproduction_2025_2026
+version: 2026-07-13
+description: >
+  Local reproduction of touzikexue Brick V11 2025-2026 backtest using an
+  external distilled score table under /tmp. The large score artifact is kept
+  outside the repository.
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: external_score
+  start: '2025-01-02'
+  end: '2026-07-02'
+  look_back_days: 720
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+factors:
+  brick: BrickChart(high, low, close, 8, 3, 12, 12, 8, 92, 114, 1, 1, 1)
+  red_risk: brick > 0
+  red_risk_7: Sum(red_risk, 7)
+signals:
+  green_exit: brick < 0
+  red7_exit: red_risk_7 >= 7
+selector:
+  mode: external_score
+  path: /tmp/quantx_brick_v11_proxy/ml_iter_rank_proxy_scores.parquet
+  date_col: date
+  instrument_col: instrument
+  score_col: iter_et_r4_score
+  score_floor: 0.02
+  lag: 1
+  sort: score_desc
+  topk: 5
+  reason: brick_v11_external_score
+  candidate_limit: 20
+rebalance:
+  type: equal_weight
+  max_positions: 11
+  buy_only_new_positions: false
+  rank_weights:
+  - 0.9
+  - 0.85
+  - 1.2
+  - 1.05
+  - 1.15
+execution:
+  deal_price: open
+  cash_use_ratio: 0.98
+  sell_rules:
+  - name: green
+    when: holding_days >= 1 and green_exit
+    action: sell_all
+  - name: 7red
+    when: red7_exit
+    action: sell_all
+  - name: max_hold_10d
+    when: holding_days >= 10
+    action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: false
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+  buy_slippage: 0.003
+  sell_slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: open
+  max_workers: 1
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true
+  precompute_signals: false

@@ -78,22 +78,29 @@ class Executor:
         """校验订单，返回拒绝原因或 None"""
         symbol = order.symbol
         date = order.date
+        strict_execution = bool(order.context.get("strict_execution"))
 
         # 1. 停牌检查
-        if exchange.is_stock_suspended(symbol, date):
-            return "suspended"
+        if strict_execution:
+            allowed = order.context.get("can_buy", True) if order.action == OrderAction.BUY else order.context.get("can_sell", True)
+            if not allowed:
+                return str(order.context.get("tradability_reason") or "not_tradable_at_open")
+        else:
+            if exchange.is_stock_suspended(symbol, date):
+                return "suspended"
 
         # 2. 涨跌停 + 一字板
-        if order.action == OrderAction.BUY:
-            if exchange.is_one_side_limit_up(symbol, date):
-                return "one_side_limit_up"
-            if exchange.is_limit_up(symbol, date):
-                return "limit_up"
-        else:
-            if exchange.is_one_side_limit_down(symbol, date):
-                return "one_side_limit_down"
-            if exchange.is_limit_down(symbol, date):
-                return "limit_down"
+        if not strict_execution:
+            if order.action == OrderAction.BUY:
+                if exchange.is_one_side_limit_up(symbol, date):
+                    return "one_side_limit_up"
+                if exchange.is_limit_up(symbol, date):
+                    return "limit_up"
+            else:
+                if exchange.is_one_side_limit_down(symbol, date):
+                    return "one_side_limit_down"
+                if exchange.is_limit_down(symbol, date):
+                    return "limit_down"
 
         # 3. 价格跳变保护（买入时检查）
         if order.action == OrderAction.BUY:

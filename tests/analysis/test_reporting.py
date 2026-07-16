@@ -11,12 +11,28 @@ from quantx.core.analysis.reporting import RunReport
 
 def test_compute_metrics_and_match_closed_positions():
     daily_nav = [
-        {"date": "2021-01-04", "total_value": 100.0, "drawdown": 0.0, "position_count": 1},
-        {"date": "2021-01-05", "total_value": 110.0, "drawdown": 0.0, "position_count": 0},
+        {"date": "2021-01-04", "cash": 20.0, "total_value": 100.0, "drawdown": 0.0, "position_count": 1},
+        {"date": "2021-01-05", "cash": 110.0, "total_value": 110.0, "drawdown": 0.0, "position_count": 0},
     ]
     trades = [
-        {"date": "2021-01-04", "symbol": "SZ000001", "action": "BUY", "quantity": 10, "price": 10.0, "trade_value": 100.0, "total_cost": 0.0},
-        {"date": "2021-01-05", "symbol": "SZ000001", "action": "SELL", "quantity": 10, "price": 11.0, "trade_value": 110.0, "total_cost": 0.0},
+        {
+            "date": "2021-01-04",
+            "symbol": "SZ000001",
+            "action": "BUY",
+            "quantity": 10,
+            "price": 10.0,
+            "trade_value": 100.0,
+            "total_cost": 0.0,
+        },
+        {
+            "date": "2021-01-05",
+            "symbol": "SZ000001",
+            "action": "SELL",
+            "quantity": 10,
+            "price": 11.0,
+            "trade_value": 110.0,
+            "total_cost": 0.0,
+        },
     ]
 
     closed = match_closed_positions(trades)
@@ -25,17 +41,47 @@ def test_compute_metrics_and_match_closed_positions():
     assert closed[0]["net_pnl"] == 10.0
     assert metrics["total_return"] == pytest.approx(0.1)
     assert metrics["trade_count"] == 2
+    assert metrics["avg_capital_utilization"] == pytest.approx(0.4)
+    assert metrics["high_utilization_day_ratio"] == pytest.approx(0.5)
+    assert metrics["zero_utilization_day_ratio"] == pytest.approx(0.5)
 
 
 def test_compute_metrics_counts_executed_trades_and_rejections_separately():
     daily_nav = [
-        {"date": "2021-01-04", "total_value": 100.0, "drawdown": 0.0, "position_count": 1},
-        {"date": "2021-01-05", "total_value": 110.0, "drawdown": 0.0, "position_count": 0},
+        {"date": "2021-01-04", "cash": 0.0, "total_value": 100.0, "drawdown": 0.0, "position_count": 1},
+        {"date": "2021-01-05", "cash": 110.0, "total_value": 110.0, "drawdown": 0.0, "position_count": 0},
     ]
     trades = [
-        {"date": "2021-01-04", "symbol": "SZ000001", "action": "BUY", "quantity": 10, "price": 10.0, "trade_value": 100.0, "total_cost": 1.0, "reject_reason": ""},
-        {"date": "2021-01-05", "symbol": "SZ000001", "action": "SELL", "quantity": 10, "price": 11.0, "trade_value": 110.0, "total_cost": 1.5, "reject_reason": ""},
-        {"date": "2021-01-05", "symbol": "SZ000002", "action": "BUY", "quantity": 10, "price": 9.0, "trade_value": 90.0, "total_cost": 99.0, "reject_reason": "suspended"},
+        {
+            "date": "2021-01-04",
+            "symbol": "SZ000001",
+            "action": "BUY",
+            "quantity": 10,
+            "price": 10.0,
+            "trade_value": 100.0,
+            "total_cost": 1.0,
+            "reject_reason": "",
+        },
+        {
+            "date": "2021-01-05",
+            "symbol": "SZ000001",
+            "action": "SELL",
+            "quantity": 10,
+            "price": 11.0,
+            "trade_value": 110.0,
+            "total_cost": 1.5,
+            "reject_reason": "",
+        },
+        {
+            "date": "2021-01-05",
+            "symbol": "SZ000002",
+            "action": "BUY",
+            "quantity": 10,
+            "price": 9.0,
+            "trade_value": 90.0,
+            "total_cost": 99.0,
+            "reject_reason": "suspended",
+        },
     ]
 
     closed = match_closed_positions(trades)

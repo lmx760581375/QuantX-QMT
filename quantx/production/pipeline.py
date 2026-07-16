@@ -17,7 +17,7 @@ from .report_renderer import build_report_payload, render_html, render_markdown
 from .strategy_runtime import DailyStrategyRuntime, StrategyRunner
 
 
-VALID_STAGES = {"all", "data", "signals", "report", "mail"}
+VALID_STAGES = {"all", "data", "predictions", "signals", "report", "mail"}
 
 
 @dataclass
@@ -28,6 +28,7 @@ class DailyPipelineResult:
     run_dir: str
     stage: str
     data_update: Dict[str, Any] = field(default_factory=dict)
+    prediction_jobs: List[Dict[str, Any]] = field(default_factory=list)
     strategy_count: int = 0
     mail_status: Dict[str, Any] = field(default_factory=dict)
     errors: List[Dict[str, Any]] = field(default_factory=list)
@@ -40,6 +41,7 @@ class DailyPipelineResult:
             "run_dir": self.run_dir,
             "stage": self.stage,
             "data_update": self.data_update,
+            "prediction_jobs": self.prediction_jobs,
             "strategy_count": self.strategy_count,
             "mail_status": self.mail_status,
             "errors": self.errors,
@@ -81,6 +83,7 @@ class DailyPipeline:
 
         errors: List[Dict[str, Any]] = []
         data_update: Dict[str, Any] = read_json(run_dir / "data_update.json", default={}) or {}
+        prediction_jobs: List[Dict[str, Any]] = read_json(run_dir / "prediction_jobs.json", default=[]) or []
         strategies: List[Dict[str, Any]] = read_json(run_dir / "strategy_signals.json", default=[]) or []
         mail_status: Dict[str, Any] = read_json(run_dir / "mail_status.json", default={}) or {}
 
@@ -90,6 +93,9 @@ class DailyPipeline:
             elif not data_update:
                 data_update = verify_provider(provider_uri)
                 write_json(run_dir / "data_update.json", data_update)
+
+            if stage in {"all", "predictions"}:
+                prediction_jobs = self._run_prediction_stage(run_dir, trade_date, dry_run)
 
             if stage in {"all", "signals"}:
                 strategies = self._run_signal_stage(run_dir, trade_date, strategy_filter, symbol_limit)
@@ -113,6 +119,7 @@ class DailyPipeline:
             run_dir=str(run_dir),
             stage=stage,
             data_update=data_update,
+            prediction_jobs=prediction_jobs,
             strategy_count=len(strategies),
             mail_status=mail_status,
             errors=errors,
@@ -125,6 +132,36 @@ class DailyPipeline:
         write_json(run_dir / "pipeline_status.json", status)
         write_text(run_dir / "logs.txt", "\n".join(self.logs) + "\n")
         return result
+
+    def _run_prediction_stage(self, run_dir: Path, trade_date: str, dry_run: bool) -> List[Dict[str, Any]]:
+        self._log("predictions stage started")
+        results: List[Dict[str, Any]] = []
+        if not self.profile.prediction_jobs:
+            results = [{"ok": True, "skipped": True, "message": "no prediction jobs configured"}]
+            write_json(run_dir / "prediction_jobs.json", results)
+            self._log("predictions stage skipped: no jobs")
+            return results
+        for job in self.profile.prediction_jobs:
+            command = _prepare_prediction_command(job.command, trade_date, run_dir, dry_run)
+            self._log(f"prediction job started: {job.name}")
+            result = run_update_command(
+                command,
+                cwd=self.profile.paths.root,
+                timeout_seconds=job.timeout_seconds,
+            )
+            item = {
+                "name": job.name,
+                "required": job.required,
+                **result,
+            }
+            results.append(item)
+            self._log(f"prediction job finished: {job.name} ok={item.get('ok')}")
+            if job.required and not item.get("ok"):
+                write_json(run_dir / "prediction_jobs.json", results)
+                raise RuntimeError(f"prediction job failed: {job.name}")
+        write_json(run_dir / "prediction_jobs.json", results)
+        self._log(f"predictions stage finished: jobs={len(results)}")
+        return results
 
     def _run_data_stage(
         self,
@@ -269,3 +306,15 @@ def _rejections_by_strategy(strategies: List[Dict[str, Any]]) -> Dict[str, Any]:
         for item in strategies
         if item.get("ok")
     }
+
+
+def _prepare_prediction_command(command: List[str], trade_date: str, run_dir: Path, dry_run: bool) -> List[str]:
+    mapping = {
+        "trade_date": trade_date,
+        "trade_date_compact": trade_date.replace("-", ""),
+        "run_dir": str(run_dir),
+    }
+    resolved = [str(part).format(**mapping) for part in command]
+    if dry_run and "--dry-run" not in resolved:
+        resolved.append("--dry-run")
+    return resolved

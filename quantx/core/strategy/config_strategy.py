@@ -250,7 +250,8 @@ def compile_strategy_config(config: Dict[str, Any]) -> CompiledStrategySpec:
     _validate_rebalance_config(rebalance_cfg, formulas, available_fields)
     _validate_execution_config(execution_cfg, formulas, available_fields)
 
-    selector_formulas = {
+    selector_mode = selector_cfg.get("mode", "precomputed")
+    selector_formulas = {} if selector_mode == "external_score" else {
         "__selector_where": str(selector_cfg.get("where")),
         "__selector_score": str(selector_cfg.get("score", 0)),
     }
@@ -258,12 +259,12 @@ def compile_strategy_config(config: Dict[str, Any]) -> CompiledStrategySpec:
     order, dependencies = _plan_formula_order(all_formulas, available_fields)
 
     selector_deps = set(dependencies.get("__selector_where", [])) | set(dependencies.get("__selector_score", []))
-    if selector_cfg.get("mode", "precomputed") in {"precomputed", "watchlist"} and selector_deps & STATEFUL_RULE_NAMES:
+    if selector_mode in {"precomputed", "watchlist"} and selector_deps & STATEFUL_RULE_NAMES:
         raise ConfigStrategyError(
-            f"selector.mode={selector_cfg.get('mode', 'precomputed')} cannot reference account/position state: "
+            f"selector.mode={selector_mode} cannot reference account/position state: "
             f"{sorted(selector_deps & STATEFUL_RULE_NAMES)}"
         )
-    if selector_cfg.get("mode", "precomputed") == "watchlist":
+    if selector_mode == "watchlist":
         evaluator = ScalarRuleEvaluator()
         confirm_names = evaluator.names(str(selector_cfg.get("confirm")))
         scalar_sources = set(formulas) | available_fields | WATCHLIST_RULE_NAMES
@@ -286,9 +287,14 @@ def compile_strategy_config(config: Dict[str, Any]) -> CompiledStrategySpec:
         formula_order=[name for name in order if not name.startswith("__selector_")],
         dependencies={name: deps for name, deps in dependencies.items() if not name.startswith("__selector_")},
         selector={
-            "mode": selector_cfg.get("mode", "precomputed"),
+            "mode": selector_mode,
             "where": selector_cfg.get("where"),
             "score": selector_cfg.get("score", 0),
+            "path": selector_cfg.get("path"),
+            "date_col": selector_cfg.get("date_col", "date"),
+            "instrument_col": selector_cfg.get("instrument_col", "instrument"),
+            "score_col": selector_cfg.get("score_col"),
+            "score_floor": selector_cfg.get("score_floor"),
             "lag": int(selector_cfg.get("lag", 1)),
             "sort": selector_cfg.get("sort", "input_order"),
             "topk": selector_cfg.get("topk"),
@@ -305,6 +311,7 @@ def compile_strategy_config(config: Dict[str, Any]) -> CompiledStrategySpec:
         },
         execution={
             "deal_price": execution_cfg.get("deal_price", "open"),
+            "sell_decision_price": execution_cfg.get("sell_decision_price"),
             "sell_rules": execution_cfg.get("sell_rules") or [],
             "buy": execution_cfg.get("buy") or {},
         },
@@ -362,11 +369,16 @@ def _normalize_group_config(raw: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
 
 def _validate_selector_config(selector_cfg: Dict[str, Any]) -> None:
-    if not selector_cfg.get("where"):
-        raise ConfigStrategyError("selector.where is required")
     mode = selector_cfg.get("mode", "precomputed")
-    if mode not in {"precomputed", "watchlist"}:
+    if mode not in {"precomputed", "watchlist", "external_score"}:
         raise ConfigStrategyError(f"Unsupported selector.mode: {mode}")
+    if mode == "external_score":
+        if not selector_cfg.get("path"):
+            raise ConfigStrategyError("selector.path is required when selector.mode=external_score")
+        if not selector_cfg.get("score_col"):
+            raise ConfigStrategyError("selector.score_col is required when selector.mode=external_score")
+    elif not selector_cfg.get("where"):
+        raise ConfigStrategyError("selector.where is required")
     if mode == "watchlist" and not selector_cfg.get("confirm"):
         raise ConfigStrategyError("selector.confirm is required when selector.mode=watchlist")
     lag = int(selector_cfg.get("lag", 1))
@@ -415,9 +427,16 @@ def _validate_execution_config(
         raise ConfigStrategyError(
             f"execution.deal_price references unknown field or formula: {deal_price}"
         )
+    sell_decision_price = str(execution_cfg.get("sell_decision_price", deal_price)).lstrip("$")
+    if sell_decision_price not in available_fields and sell_decision_price not in formulas:
+        raise ConfigStrategyError(
+            f"execution.sell_decision_price references unknown field or formula: {sell_decision_price}"
+        )
     buy_cfg = execution_cfg.get("buy") or {}
     if buy_cfg.get("sizing", "cash_equal") not in {"cash_equal", "slot_equal"}:
         raise ConfigStrategyError(f"Unsupported buy.sizing: {buy_cfg.get('sizing')}")
+    if buy_cfg.get("max_open_gap_pct") is not None and float(buy_cfg["max_open_gap_pct"]) < 0:
+        raise ConfigStrategyError("buy.max_open_gap_pct must be non-negative")
     evaluator = ScalarRuleEvaluator()
     scalar_sources = set(formulas) | available_fields | STATEFUL_RULE_NAMES
     if buy_cfg.get("when"):
@@ -712,6 +731,175 @@ class GroupAwareFormulaSelector(FormulaSelector):
             raise ConfigStrategyError("GroupAwareFormulaSelector requires BacktestContext.factor_runtime")
         _inject_runtime_groups(runtime, self.groups)
         super().prepare(context)
+
+
+class ExternalScoreSelector(StockSelector):
+    """Selector backed by an external daily score table."""
+
+    def __init__(
+        self,
+        path: str | Path,
+        score_col: str,
+        date_col: str = "date",
+        instrument_col: str = "instrument",
+        lag: int = 1,
+        sort: str = "score_desc",
+        topk: Optional[int] = None,
+        score_floor: float | None = None,
+        reason: str = "external_score_buy",
+        candidate_limit: int = 20,
+        formulas: Optional[Dict[str, str]] = None,
+        groups: Optional[Dict[str, Dict[str, Any]]] = None,
+    ):
+        self.path = Path(path)
+        self.score_col = str(score_col)
+        self.date_col = str(date_col)
+        self.instrument_col = str(instrument_col)
+        self.lag = int(lag)
+        if self.lag < 1:
+            raise ConfigStrategyError("selector.lag must be >= 1 to avoid same-day lookahead trading")
+        self.sort = sort
+        self.topk = topk
+        self.score_floor = None if score_floor is None else float(score_floor)
+        self.reason = reason
+        self.candidate_limit = int(candidate_limit)
+        self.formulas = dict(formulas or {})
+        self.groups = groups or {}
+        self._by_date: Dict[str, pd.DataFrame] = {}
+
+    def prepare(self, context):
+        runtime = getattr(context, "factor_runtime", None)
+        if runtime is not None and self.formulas:
+            _inject_runtime_groups(runtime, self.groups)
+            runtime.compute_formulas(self.formulas)
+
+        frame = self._load_scores()
+        required = {self.date_col, self.instrument_col, self.score_col}
+        missing = required - set(frame.columns)
+        if missing:
+            raise ConfigStrategyError(f"External score table missing columns: {sorted(missing)}")
+
+        data = frame[[self.date_col, self.instrument_col, self.score_col]].copy()
+        data[self.date_col] = pd.to_datetime(data[self.date_col]).dt.strftime("%Y-%m-%d")
+        data[self.instrument_col] = data[self.instrument_col].astype(str)
+        data[self.score_col] = pd.to_numeric(data[self.score_col], errors="coerce")
+        data = data.dropna(subset=[self.date_col, self.instrument_col, self.score_col])
+        self._by_date = {
+            str(date): self._rank_day(day)
+            for date, day in data.groupby(self.date_col, sort=True)
+        }
+        self._record_daily_candidates(context)
+
+    def act(self, state: PolicyState) -> StockSelection:
+        signal_date = self._signal_date(state)
+        if signal_date is None:
+            self._record_candidates(state, None, pd.DataFrame(), pd.DataFrame())
+            return StockSelection(signals=[])
+        raw_selected = self._by_date.get(signal_date, pd.DataFrame())
+        selected = raw_selected.head(int(self.topk)) if self.topk is not None else raw_selected
+        signals = [
+            Signal(
+                symbol=str(row[self.instrument_col]),
+                score=_safe_float(row[self.score_col]),
+                reason=self.reason,
+                signal_date=signal_date,
+            )
+            for _, row in selected.iterrows()
+        ]
+        self._record_candidates(state, signal_date, raw_selected, selected)
+        return StockSelection(signals=signals)
+
+    def _load_scores(self) -> pd.DataFrame:
+        suffix = self.path.suffix.lower()
+        if suffix in {".parquet", ".pq"}:
+            return pd.read_parquet(self.path)
+        if suffix == ".csv":
+            return pd.read_csv(self.path)
+        if suffix in {".json", ".jsonl"}:
+            return pd.read_json(self.path, lines=suffix == ".jsonl")
+        raise ConfigStrategyError(f"Unsupported external score file type: {self.path.suffix}")
+
+    def _rank_day(self, day: pd.DataFrame) -> pd.DataFrame:
+        ranked = day.copy()
+        if self.score_floor is not None:
+            ranked = ranked.loc[ranked[self.score_col] >= self.score_floor]
+        if self.sort == "score_desc":
+            ranked = ranked.sort_values(self.score_col, ascending=False)
+        elif self.sort == "score_asc":
+            ranked = ranked.sort_values(self.score_col, ascending=True)
+        elif self.sort not in {"input_order", "none"}:
+            raise ConfigStrategyError(f"Unsupported selector sort: {self.sort}")
+        return ranked.reset_index(drop=True)
+
+    def _record_daily_candidates(self, context) -> None:
+        recorder = getattr(context, "record_daily_selection_candidates", None)
+        if not callable(recorder):
+            return
+        for signal_date in list(getattr(context, "trade_dates", [])):
+            raw_selected = self._by_date.get(signal_date, pd.DataFrame())
+            selected = raw_selected.head(int(self.topk)) if self.topk is not None else raw_selected
+            detail = self._candidate_detail(signal_date, signal_date, raw_selected, selected)
+            detail["mode"] = "external_score_daily_signal"
+            detail["execution_lag"] = self.lag
+            detail["for_next_session"] = True
+            recorder(signal_date, detail)
+
+    def _record_candidates(
+        self,
+        state: PolicyState,
+        signal_date: Optional[str],
+        raw_selected: pd.DataFrame,
+        selected: pd.DataFrame,
+    ) -> None:
+        context = getattr(state, "context", None)
+        recorder = getattr(context, "record_selection_candidates", None) if context is not None else None
+        if callable(recorder):
+            recorder(state.date, self._candidate_detail(state.date, signal_date, raw_selected, selected))
+
+    def _candidate_detail(
+        self,
+        date: str,
+        signal_date: Optional[str],
+        raw_selected: pd.DataFrame,
+        selected: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        return {
+            "date": date,
+            "signal_date": signal_date,
+            "mode": "external_score",
+            "path": str(self.path),
+            "score": self.score_col,
+            "score_floor": self.score_floor,
+            "sort": self.sort,
+            "topk": self.topk,
+            "lag": self.lag,
+            "raw_candidate_count": int(len(raw_selected)),
+            "selected_count": int(len(selected)),
+            "raw_candidates": self._candidate_rows(raw_selected, self.candidate_limit),
+            "selected_candidates": self._candidate_rows(selected, self.candidate_limit),
+            "reason": self.reason,
+        }
+
+    def _candidate_rows(self, frame: pd.DataFrame, limit: int) -> List[Dict[str, Any]]:
+        if frame.empty:
+            return []
+        return [
+            {
+                "symbol": str(row[self.instrument_col]),
+                "score": _safe_float(row[self.score_col]),
+                "where": True,
+            }
+            for _, row in frame.head(max(0, int(limit))).iterrows()
+        ]
+
+    def _signal_date(self, state: PolicyState) -> Optional[str]:
+        dates = list(getattr(state.context, "trade_dates", [])) if state.context is not None else []
+        try:
+            idx = dates.index(state.date)
+        except ValueError:
+            return None
+        signal_idx = idx - self.lag
+        return dates[signal_idx] if signal_idx >= 0 else None
 
 
 class WatchlistFormulaSelector(StockSelector):
@@ -1106,11 +1294,13 @@ class RuleExecution(ExecutionStrategy):
         sell_rules: Sequence[SellRule | Dict[str, Any]],
         cost: TransactionCost,
         deal_price: str = "open",
+        sell_decision_price: str | None = None,
         cash_use_ratio: float = 0.99,
         sizing: str = "cash_equal",
         lot_size: int = 100,
         skip_if_holding: bool = True,
         skip_limit_up: bool = False,
+        max_open_gap_pct: float | None = None,
         reuse_sell_cash: bool = False,
         buy_when: str | None = None,
         add_existing_when: str | None = None,
@@ -1121,11 +1311,13 @@ class RuleExecution(ExecutionStrategy):
         ]
         self.cost = cost
         self.deal_price = deal_price
+        self.sell_decision_price = sell_decision_price or deal_price
         self.cash_use_ratio = float(cash_use_ratio)
         self.sizing = sizing
         self.lot_size = int(lot_size)
         self.skip_if_holding = bool(skip_if_holding)
         self.skip_limit_up = bool(skip_limit_up)
+        self.max_open_gap_pct = None if max_open_gap_pct is None else float(max_open_gap_pct)
         self.reuse_sell_cash = bool(reuse_sell_cash)
         self.buy_when = str(buy_when) if buy_when else ""
         self.add_existing_when = str(add_existing_when) if add_existing_when else ""
@@ -1144,33 +1336,38 @@ class RuleExecution(ExecutionStrategy):
         self._previewed_sell_decisions: tuple[str, list] | None = None
 
     def prepare(self, context):
-        field = f"${self.deal_price.lstrip('$')}"
+        fields = {
+            f"${self.deal_price.lstrip('$')}",
+            f"${self.sell_decision_price.lstrip('$')}",
+        }
         exchange = getattr(context, "exchange", None)
         quote = getattr(exchange, "quote", None) if exchange is not None else None
         if quote is None:
             return
-        if field in quote.columns:
-            return
+        for field in fields:
+            if field in quote.columns:
+                continue
 
-        runtime = getattr(context, "factor_runtime", None)
-        if runtime is None or self.deal_price.lstrip("$") not in runtime.values:
-            raise ConfigStrategyError(
-                f"execution.deal_price is not available as quote field or computed formula: {self.deal_price}"
-            )
-        matrix = np.asarray(runtime.values[self.deal_price.lstrip("$")])
-        if matrix.ndim != 2:
-            raise ConfigStrategyError(
-                f"execution.deal_price formula must produce a [date, symbol] matrix: {self.deal_price}"
-            )
-        if matrix.shape != (len(runtime.panel.dates), len(runtime.panel.instruments)):
-            raise ConfigStrategyError(
-                f"execution.deal_price formula shape mismatch: {self.deal_price}"
-            )
+            field_name = field.lstrip("$")
+            runtime = getattr(context, "factor_runtime", None)
+            if runtime is None or field_name not in runtime.values:
+                raise ConfigStrategyError(
+                    f"execution price field is not available as quote field or computed formula: {field_name}"
+                )
+            matrix = np.asarray(runtime.values[field_name])
+            if matrix.ndim != 2:
+                raise ConfigStrategyError(
+                    f"execution price formula must produce a [date, symbol] matrix: {field_name}"
+                )
+            if matrix.shape != (len(runtime.panel.dates), len(runtime.panel.instruments)):
+                raise ConfigStrategyError(
+                    f"execution price formula shape mismatch: {field_name}"
+                )
 
-        wide = pd.DataFrame(matrix, index=runtime.panel.dates, columns=runtime.panel.instruments)
-        series = wide.stack(future_stack=True)
-        series.index = series.index.set_names(["datetime", "instrument"])
-        exchange.quote[field] = series.reindex(exchange.quote.index).astype(float)
+            wide = pd.DataFrame(matrix, index=runtime.panel.dates, columns=runtime.panel.instruments)
+            series = wide.stack(future_stack=True)
+            series.index = series.index.set_names(["datetime", "instrument"])
+            exchange.quote[field] = series.reindex(exchange.quote.index).astype(float)
 
     def act(self, state: PolicyState, allocation: WeightAllocation) -> OrderList:
         orders: List[Order] = []
@@ -1248,6 +1445,8 @@ class RuleExecution(ExecutionStrategy):
             if sym not in add_existing_symbols and self.buy_when and not self._buy_rule_passes(state, sym, price):
                 continue
             if self.skip_limit_up and self._is_limit_up(state, sym):
+                continue
+            if self.max_open_gap_pct is not None and self._is_open_gap_too_high(state, sym):
                 continue
             if self.sizing == "slot_equal":
                 cash_per_stock = min(
@@ -1373,7 +1572,11 @@ class RuleExecution(ExecutionStrategy):
             if cur_price is None or cur_price <= 0 or pos.avg_cost <= 0:
                 continue
 
-            values = self._rule_values(state, sym, pos, cur_price)
+            decision_price = self._get_sell_decision_price(state, sym)
+            if decision_price is None or decision_price <= 0:
+                continue
+
+            values = self._rule_values(state, sym, pos, decision_price)
             reason = None
             quantity = 0
             is_full_exit = False
@@ -1477,6 +1680,18 @@ class RuleExecution(ExecutionStrategy):
 
     def _get_price(self, state: PolicyState, symbol: str) -> Optional[float]:
         field = f"${self.deal_price.lstrip('$')}"
+        return self._get_quote_field(state, symbol, field)
+
+    def _get_sell_decision_price(self, state: PolicyState, symbol: str) -> Optional[float]:
+        field = f"${self.sell_decision_price.lstrip('$')}"
+        decision_date = self._decision_date(state)
+        if decision_date:
+            price = self._get_quote_field_on_date(state, symbol, field, decision_date)
+            if price is not None:
+                return price
+        return self._get_quote_field(state, symbol, field)
+
+    def _get_quote_field(self, state: PolicyState, symbol: str, field: str) -> Optional[float]:
         if state.market_data is not None and not getattr(state.market_data, "empty", True):
             try:
                 price = state.market_data.at[symbol, field]
@@ -1490,6 +1705,48 @@ class RuleExecution(ExecutionStrategy):
             return float(price) if not pd.isna(price) else None
         except Exception:
             return None
+
+    def _get_quote_field_on_date(self, state: PolicyState, symbol: str, field: str, date: str) -> Optional[float]:
+        if state.context is None or state.context.exchange.quote is None:
+            return None
+        try:
+            price = state.context.exchange.quote.loc[(pd.Timestamp(date), symbol), field]
+            return float(price) if not pd.isna(price) else None
+        except Exception:
+            return None
+
+    def _is_open_gap_too_high(self, state: PolicyState, symbol: str) -> bool:
+        if self.max_open_gap_pct is None:
+            return False
+        open_price = self._get_quote_field(state, symbol, "$open")
+        preclose = self._previous_close(state, symbol)
+        if open_price is None or preclose is None or open_price <= 0 or preclose <= 0:
+            return False
+        return open_price / preclose - 1.0 >= self.max_open_gap_pct - 1e-12
+
+    def _previous_close(self, state: PolicyState, symbol: str) -> Optional[float]:
+        dates = list(getattr(state.context, "trade_dates", [])) if state.context is not None else []
+        try:
+            idx = dates.index(state.date)
+        except ValueError:
+            idx = -1
+        if idx > 0:
+            prev_date = dates[idx - 1]
+            quote = getattr(getattr(state.context, "exchange", None), "quote", None)
+            if quote is not None:
+                try:
+                    value = quote.loc[(pd.Timestamp(prev_date), symbol), "$close"]
+                    return float(value) if not pd.isna(value) else None
+                except Exception:
+                    pass
+        if state.market_data is not None and not getattr(state.market_data, "empty", True):
+            for field in ("$preclose", "preclose", "$prev_close", "prev_close"):
+                try:
+                    value = state.market_data.at[symbol, field]
+                    return float(value) if not pd.isna(value) else None
+                except Exception:
+                    continue
+        return None
 
     def _is_limit_up(self, state: PolicyState, symbol: str) -> bool:
         if state.market_data is not None and not getattr(state.market_data, "empty", True):
@@ -1522,13 +1779,26 @@ def build_formula_strategy(config: Dict[str, Any], cost: TransactionCost) -> Com
     rebalance_cfg = config.get("rebalance") or {}
     execution_cfg = config.get("execution") or {}
     buy_cfg = execution_cfg.get("buy") or {}
-    if not selector_cfg.get("where"):
-        raise ConfigStrategyError("selector.where is required")
     if rebalance_cfg.get("type", "equal_weight") != "equal_weight":
         raise ConfigStrategyError(f"Unsupported rebalance.type: {rebalance_cfg.get('type')}")
 
     selector_mode = selector_cfg.get("mode", "precomputed")
-    if selector_mode == "watchlist":
+    if selector_mode == "external_score":
+        selector = ExternalScoreSelector(
+            path=selector_cfg.get("path"),
+            score_col=selector_cfg.get("score_col"),
+            date_col=selector_cfg.get("date_col", "date"),
+            instrument_col=selector_cfg.get("instrument_col", "instrument"),
+            lag=selector_cfg.get("lag", 1),
+            sort=selector_cfg.get("sort", "score_desc"),
+            topk=selector_cfg.get("topk"),
+            score_floor=selector_cfg.get("score_floor"),
+            reason=selector_cfg.get("reason", "external_score_buy"),
+            candidate_limit=selector_cfg.get("candidate_limit", 20),
+            formulas=formulas,
+            groups=groups,
+        )
+    elif selector_mode == "watchlist":
         watchlist_cfg = selector_cfg.get("watchlist") or {}
         selector = WatchlistFormulaSelector(
             formulas=formulas,
@@ -1546,6 +1816,8 @@ def build_formula_strategy(config: Dict[str, Any], cost: TransactionCost) -> Com
             groups=groups,
         )
     else:
+        if not selector_cfg.get("where"):
+            raise ConfigStrategyError("selector.where is required")
         selector_cls = GroupAwareFormulaSelector if groups else FormulaSelector
         selector = selector_cls(
             formulas=formulas,
@@ -1570,11 +1842,13 @@ def build_formula_strategy(config: Dict[str, Any], cost: TransactionCost) -> Com
         sell_rules=execution_cfg.get("sell_rules") or [],
         cost=cost,
         deal_price=execution_cfg.get("deal_price", "open"),
+        sell_decision_price=execution_cfg.get("sell_decision_price"),
         cash_use_ratio=execution_cfg.get("cash_use_ratio", rebalance_cfg.get("cash_use_ratio", 0.99)),
         sizing=buy_cfg.get("sizing", "cash_equal"),
         lot_size=buy_cfg.get("lot_size", 100),
         skip_if_holding=buy_cfg.get("skip_if_holding", True),
         skip_limit_up=buy_cfg.get("skip_limit_up", False),
+        max_open_gap_pct=buy_cfg.get("max_open_gap_pct"),
         reuse_sell_cash=buy_cfg.get("reuse_sell_cash", False),
         buy_when=buy_cfg.get("when"),
         add_existing_when=buy_cfg.get("add_existing_when"),
@@ -1583,7 +1857,7 @@ def build_formula_strategy(config: Dict[str, Any], cost: TransactionCost) -> Com
         selector=selector,
         rebalance=rebalance,
         execution=execution,
-        precompute_stock_signals=(selector_mode != "watchlist"),
+        precompute_stock_signals=(selector_mode not in {"watchlist", "external_score"}),
     )
 
 

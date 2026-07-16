@@ -1,0 +1,81 @@
+name: brick_v11_forward_label_tail_best_2025_2026
+version: 2026-07-14
+description: 'Brick V11 strict forward-label tail model best-return config. The score
+  table is a temporary /tmp artifact trained from 2013-2024 brick-exit labels and
+  applied to 2025-2026; execution parameters were selected from the 2025-2026
+  search runs, so this is not a sealed OOS result.
+
+  '
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: external_score
+  start: '2025-01-02'
+  end: '2026-07-10'
+  look_back_days: 720
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  volume: $volume
+  vwap: $vwap
+  change: $change
+factors:
+  brick: BrickChart(high, low, close, 8, 3, 12, 12, 8, 92, 114, 1, 1, 1)
+  red_risk: brick > 0
+  red_risk_7: Sum(red_risk, 7)
+signals:
+  green_exit: brick < 0
+  red7_exit: red_risk_7 >= 7
+selector:
+  mode: external_score
+  path: /tmp/quantx_brick_v11_forward_oos_tail_v1/tail_oos_scores.parquet
+  date_col: date
+  instrument_col: instrument
+  score_col: score
+  lag: 1
+  sort: score_desc
+  topk: 5
+  reason: brick_v11_forward_tail_oos
+  candidate_limit: 20
+  score_floor: 0.8385
+rebalance:
+  type: equal_weight
+  max_positions: 4
+  buy_only_new_positions: false
+execution:
+  deal_price: open
+  cash_use_ratio: 0.995
+  sell_rules:
+  - name: green
+    when: holding_days >= 1 and green_exit
+    action: sell_all
+  - name: 7red
+    when: red7_exit
+    action: sell_all
+  - name: max_hold_10d
+    when: holding_days >= 10
+    action: sell_all
+  buy:
+    sizing: cash_equal
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.0
+  buy_slippage: 0.003
+  sell_slippage: 0.0
+engine:
+  init_cash: 1000000
+  validate_trading_rules: true
+  deal_price: open
+  max_workers: 1
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true
+  precompute_signals: false

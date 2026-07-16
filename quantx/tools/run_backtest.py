@@ -112,6 +112,14 @@ def build_cost(config: Dict[str, Any]) -> TransactionCost:
         stamp_tax_rate=float(cost_cfg.get("stamp_tax_rate", 0.0005)),
         transfer_fee_rate=float(cost_cfg.get("transfer_fee_rate", 0.00002)),
         slippage=float(cost_cfg.get("slippage", 0.001)),
+        buy_slippage=(
+            float(cost_cfg["buy_slippage"])
+            if cost_cfg.get("buy_slippage") is not None else None
+        ),
+        sell_slippage=(
+            float(cost_cfg["sell_slippage"])
+            if cost_cfg.get("sell_slippage") is not None else None
+        ),
         stamp_tax_on_buy=bool(cost_cfg.get("stamp_tax_on_buy", False)),
     )
 
@@ -177,6 +185,60 @@ def load_symbols(config: Dict[str, Any], limit: int | None = None) -> List[str]:
     universe = data_cfg.get("universe", "all_a")
     if isinstance(universe, list):
         return [str(sym) for sym in universe[:limit]]
+    if universe == "external_score":
+        selector = dict(config.get("selector") or {})
+        path = selector.get("path")
+        date_col = str(selector.get("date_col", "date"))
+        instrument_col = str(selector.get("instrument_col", "instrument"))
+        score_col = selector.get("score_col")
+        score_floor = selector.get("score_floor")
+        topk = selector.get("topk")
+        sort = selector.get("sort", "score_desc")
+        if not path:
+            raise ValueError("external_score universe requires selector.path")
+        score_path = Path(path)
+        suffix = score_path.suffix.lower()
+        columns = [instrument_col]
+        if score_col:
+            columns.extend([date_col, str(score_col)])
+        if suffix in {".parquet", ".pq"}:
+            frame = pd.read_parquet(score_path, columns=list(dict.fromkeys(columns)))
+        elif suffix == ".csv":
+            frame = pd.read_csv(score_path, usecols=list(dict.fromkeys(columns)))
+        elif suffix in {".json", ".jsonl"}:
+            frame = pd.read_json(score_path, lines=suffix == ".jsonl")[list(dict.fromkeys(columns))]
+        else:
+            raise ValueError(f"Unsupported external_score universe file type: {score_path.suffix}")
+        if score_col and date_col in frame.columns and score_col in frame.columns:
+            frame = _external_score_selected_rows(
+                frame,
+                date_col=date_col,
+                score_col=str(score_col),
+                score_floor=score_floor,
+                topk=topk,
+                sort=str(sort),
+            )
+        symbols = tuple(sorted(frame[instrument_col].dropna().astype(str).unique()))
+        extras = tuple(str(symbol) for symbol in data_cfg.get("extra_symbols", ()))
+        combined = tuple(dict.fromkeys((*symbols, *extras)))
+        return list(combined[:limit])
+    if universe == "prediction_store":
+        from quantx.core.decision.predictions import PredictionStore
+
+        alpha = dict((config.get("strategy") or {}).get("alpha") or {})
+        if not alpha.get("path"):
+            raise ValueError("prediction_store universe requires strategy.alpha.path")
+        store = PredictionStore.load(
+            alpha["path"], expected_checksum=alpha.get("checksum")
+        )
+        pool_topk = data_cfg.get("prediction_pool_topk")
+        if pool_topk is None:
+            symbols = store.instruments
+        else:
+            symbols = store.top_instruments(artifact_id=alpha.get("artifact_id"), top_k=int(pool_topk))
+        extras = tuple(str(symbol) for symbol in data_cfg.get("extra_symbols", ()))
+        combined = tuple(dict.fromkeys((*symbols, *extras)))
+        return list(combined[:limit])
     if universe == "wufu_etf":
         from quantx.strategies.universe_presets import wufu_etf_symbols
 
@@ -191,6 +253,33 @@ def load_symbols(config: Dict[str, Any], limit: int | None = None) -> List[str]:
         limit=limit if limit is not None else data_cfg.get("symbol_limit"),
         universe=universe,
     )
+
+
+def _external_score_selected_rows(
+    frame: pd.DataFrame,
+    *,
+    date_col: str,
+    score_col: str,
+    score_floor: Any,
+    topk: Any,
+    sort: str,
+) -> pd.DataFrame:
+    selected = frame.copy()
+    selected[date_col] = pd.to_datetime(selected[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
+    selected[score_col] = pd.to_numeric(selected[score_col], errors="coerce")
+    selected = selected.dropna(subset=[date_col, score_col])
+    if score_floor is not None:
+        selected = selected.loc[selected[score_col] >= float(score_floor)]
+    pieces = []
+    for _, day in selected.groupby(date_col, sort=True):
+        if sort == "score_desc":
+            day = day.sort_values(score_col, ascending=False)
+        elif sort == "score_asc":
+            day = day.sort_values(score_col, ascending=True)
+        if topk is not None:
+            day = day.head(int(topk))
+        pieces.append(day)
+    return pd.concat(pieces, ignore_index=True) if pieces else selected.iloc[0:0]
 
 
 def summarize(result, symbols: Iterable[str], config: Dict[str, Any]) -> Dict[str, Any]:

@@ -52,12 +52,21 @@ class DataUpdateConfig:
 
 
 @dataclass(frozen=True)
+class PredictionJobConfig:
+    name: str
+    command: List[str]
+    timeout_seconds: int = 21600
+    required: bool = True
+
+
+@dataclass(frozen=True)
 class ProductionProfile:
     name: str
     timezone: str
     raw: Dict[str, Any]
     paths: ProductionPaths
     data: DataUpdateConfig
+    prediction_jobs: List[PredictionJobConfig]
     strategies: List[str]
     mail: MailConfig
     portfolio: PortfolioStateConfig
@@ -76,6 +85,7 @@ def load_profile(path: str | Path, project_root: str | Path | None = None) -> Pr
     timezone = str(raw.get("timezone") or "Asia/Shanghai")
     data_raw = raw.get("data") or {}
     strategies_raw = raw.get("strategies") or {}
+    predictions_raw = raw.get("predictions") or {}
     notification_raw = raw.get("notification") or {}
     portfolio_raw = raw.get("portfolio_state") or {}
     mail_file_raw = _load_mail_file(root, notification_raw.get("config_path") or notification_raw.get("mail_config"))
@@ -101,6 +111,7 @@ def load_profile(path: str | Path, project_root: str | Path | None = None) -> Pr
             update_command=[str(part) for part in (data_raw.get("update_command") or [])],
             timeout_seconds=int(data_raw.get("timeout_seconds") or 21600),
         ),
+        prediction_jobs=_prediction_jobs(predictions_raw),
         strategies=strategies,
         mail=MailConfig(
             enabled=bool(notification_raw.get("enabled", True)),
@@ -170,3 +181,23 @@ def _optional_int(value: Any) -> int | None:
     if value in (None, ""):
         return None
     return int(value)
+
+
+def _prediction_jobs(raw: Any) -> List[PredictionJobConfig]:
+    if not isinstance(raw, dict) or not raw.get("enabled", False):
+        return []
+    jobs = raw.get("jobs") or []
+    result: List[PredictionJobConfig] = []
+    for index, item in enumerate(jobs, start=1):
+        if not isinstance(item, dict):
+            continue
+        command = [str(part) for part in (item.get("command") or [])]
+        if not command:
+            continue
+        result.append(PredictionJobConfig(
+            name=str(item.get("name") or f"prediction_job_{index}"),
+            command=command,
+            timeout_seconds=int(item.get("timeout_seconds") or raw.get("timeout_seconds") or 21600),
+            required=bool(item.get("required", True)),
+        ))
+    return result

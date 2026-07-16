@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 import pandas as pd
 
@@ -48,9 +48,16 @@ class AStockExchange:
     def _import_qlib():
         return import_qlib()
 
-    def load_quote_data(self, symbols: List[str], start: str, end: str) -> None:
+    def load_quote_data(self, symbols: List[str], start: str, end: str, extra_fields: Optional[Iterable[str]] = None) -> None:
         self._init_qlib()
         fields = ["$open", "$high", "$low", "$close", "$volume", "$amount", "$change", "$factor", "$vwap"]
+        for field in extra_fields or []:
+            name = str(field)
+            if not name:
+                continue
+            qlib_field = name if name.startswith("$") else f"${name}"
+            if qlib_field not in fields:
+                fields.append(qlib_field)
         if self._reader is not None:
             quote = self._reader.features(symbols, fields, start, end)
         else:
@@ -185,36 +192,26 @@ class AStockExchange:
         return change <= -self.board.get_limit_down_rate(symbol) + 1e-6
 
     def is_one_side_limit_up(self, symbol: str, date: str) -> bool:
-        if not self.is_limit_up(symbol, date):
-            return False
         try:
             row = self.quote.loc[(pd.Timestamp(date), symbol)]
-            if abs(row["$high"] - row["$low"]) > 1e-6:
-                return False
-            if abs(row["$open"] - row["$close"]) > 1e-6:
-                return False
-            vol = row.get("$volume", 0)
-            if vol is not None and not pd.isna(vol) and vol > 0:
-                return False
-            return True
+            return _is_one_price_bar(row) and self._bar_return(symbol, date, row) >= 0.045
         except (KeyError, IndexError):
             return False
 
     def is_one_side_limit_down(self, symbol: str, date: str) -> bool:
-        if not self.is_limit_down(symbol, date):
-            return False
         try:
             row = self.quote.loc[(pd.Timestamp(date), symbol)]
-            if abs(row["$high"] - row["$low"]) > 1e-6:
-                return False
-            if abs(row["$open"] - row["$close"]) > 1e-6:
-                return False
-            vol = row.get("$volume", 0)
-            if vol is not None and not pd.isna(vol) and vol > 0:
-                return False
-            return True
+            return _is_one_price_bar(row) and self._bar_return(symbol, date, row) <= -0.045
         except (KeyError, IndexError):
             return False
+
+    def _bar_return(self, symbol: str, date: str, row: pd.Series) -> float:
+        preclose = self.get_preclose(symbol, date)
+        close = _field_float(row, "$close")
+        if preclose is not None and preclose > 0 and close is not None:
+            return close / preclose - 1.0
+        change = _field_float(row, "$change")
+        return float(change) if change is not None else 0.0
 
     def is_stock_tradable(
         self, symbol: str, date: str, direction: Optional[int] = None
@@ -230,3 +227,18 @@ class AStockExchange:
                 return False
             return not self.is_limit_down(symbol, date)
         return True
+
+
+def _field_float(row: pd.Series, field: str) -> Optional[float]:
+    value = row.get(field)
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
+
+
+def _is_one_price_bar(row: pd.Series) -> bool:
+    values = [_field_float(row, field) for field in ("$open", "$high", "$low", "$close")]
+    if any(value is None or value <= 0 for value in values):
+        return False
+    open_price, high, low, close = values
+    return max(abs(high - low), abs(open_price - close)) <= 1e-6

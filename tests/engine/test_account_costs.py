@@ -4,6 +4,7 @@ import pytest
 
 from quantx.core.engine.account import Account
 from quantx.core.engine.cost import TransactionCost
+from quantx.core.engine.types import OrderAction
 
 
 class _CloseExchange:
@@ -36,6 +37,13 @@ def test_trade_cost_components_are_reported_separately():
     assert sell.transfer_fee == pytest.approx(1.1)
     assert sell.total_cost == pytest.approx(17.6)
     assert sell.reason == "take_profit"
+
+
+def test_transaction_cost_supports_asymmetric_slippage():
+    cost = TransactionCost(slippage=0.01, buy_slippage=0.003, sell_slippage=0.0)
+
+    assert cost.apply_slippage(10.0, OrderAction.BUY) == pytest.approx(10.03)
+    assert cost.apply_slippage(10.0, OrderAction.SELL) == pytest.approx(10.0)
 
 
 def test_daily_return_uses_previous_day_total_value():

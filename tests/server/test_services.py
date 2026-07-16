@@ -28,6 +28,36 @@ def test_config_service_delete_config(tmp_path):
     assert not (tmp_path / "demo.yaml").exists()
 
 
+def test_daily_run_service_lists_and_reads_daily_artifacts(tmp_path):
+    run_dir = tmp_path / "20260710" / "default"
+    run_dir.mkdir(parents=True)
+    _write_json(run_dir / "pipeline_status.json", {"ok": True, "trade_date": "2026-07-10"})
+    _write_json(run_dir / "data_update.json", {"ok": True, "calendar_end": "2026-07-10"})
+    _write_json(run_dir / "strategy_signals.json", [
+        {
+            "ok": True,
+            "strategy_name": "path_sequence_top7_bridge_v1",
+            "strategy_title": "路径序列Top7",
+            "positions": [{"symbol": "SZ000001"}],
+            "buy_count_today": 1,
+            "sell_count_today": 0,
+        }
+    ])
+    _write_json(run_dir / "strategy_positions.json", {"path_sequence_top7_bridge_v1": [{"symbol": "SZ000001"}]})
+
+    service = services.DailyRunService(root=tmp_path)
+
+    rows = service.list_runs()
+    detail = service.read_run("2026-07-10", "default")
+
+    assert rows[0]["date"] == "2026-07-10"
+    assert rows[0]["strategy_count"] == 1
+    assert rows[0]["position_count"] == 1
+    assert rows[0]["buy_count_today"] == 1
+    assert detail["date_key"] == "20260710"
+    assert detail["strategies"][0]["strategy_title"] == "路径序列Top7"
+
+
 def test_pattern_analysis_service_reads_analysis_and_similarity(tmp_path):
     root = tmp_path / "pattern_analysis"
     analysis = root / "unit_analysis"
@@ -545,7 +575,7 @@ def test_report_service_symbol_detail_returns_bars_and_bs_points(tmp_path, monke
             self.provider_uri = provider_uri
             self.quote = None
 
-        def load_quote_data(self, symbols, start, end):
+        def load_quote_data(self, symbols, start, end, extra_fields=None):
             index = pd.MultiIndex.from_product(
                 [pd.to_datetime(["2021-01-04", "2021-01-05", "2021-01-06"]), symbols],
                 names=["datetime", "instrument"],
@@ -579,3 +609,62 @@ def test_report_service_symbol_detail_returns_bars_and_bs_points(tmp_path, monke
     assert len(detail["bars"]) == 3
     assert [trade["action"] for trade in detail["trades"]] == ["BUY", "SELL"]
     assert detail["round_trips"][0]["return"] == pytest.approx(0.2)
+
+
+def test_report_service_symbol_detail_reads_0amv_virtual_bars(tmp_path, monkeypatch):
+    run_dir = tmp_path / "unit_run"
+    run_dir.mkdir()
+    _write_json(run_dir / "summary.json", {
+        "run_id": "unit_run",
+        "start_date": "2021-01-04",
+        "end_date": "2021-01-06",
+    })
+    _write_json(run_dir / "metrics.json", {})
+    _write_json(run_dir / "daily_nav.json", [])
+    _write_json(run_dir / "positions.json", [])
+    _write_json(run_dir / "closed_positions.json", [])
+    _write_json(run_dir / "explain.json", {"config": {"data": {"provider_uri": "data/qlib_data_fixed"}}})
+    _write_json(run_dir / "trades.json", [])
+    amv_csv = tmp_path / "0amv.csv"
+    pd.DataFrame([
+        {
+            "date": "2021-01-04",
+            "symbol": "0AMV_SH",
+            "name": "上证0AMV",
+            "market": "sh_mainboard",
+            "open": 100.0,
+            "high": 100.0,
+            "low": 100.0,
+            "close": 100.0,
+            "volume": 10.0,
+            "amount": 100.0,
+            "member_count": 1,
+            "source": "unit",
+            "updated_at": "2021-01-06T15:30:00+08:00",
+        },
+        {
+            "date": "2021-01-06",
+            "symbol": "0AMV_SH",
+            "name": "上证0AMV",
+            "market": "sh_mainboard",
+            "open": 100.0,
+            "high": 120.0,
+            "low": 100.0,
+            "close": 120.0,
+            "volume": 12.0,
+            "amount": 120.0,
+            "member_count": 1,
+            "source": "unit",
+            "updated_at": "2021-01-06T15:30:00+08:00",
+        },
+    ]).to_csv(amv_csv, index=False)
+    monkeypatch.setattr(services, "ACTIVE_VALUE_CSV", amv_csv)
+    service = services.ReportService(root=tmp_path, meta_store=MetaStore(tmp_path / "meta.sqlite"))
+
+    detail = service.read_symbol_detail("unit_run", "amv_sh")
+
+    assert detail["symbol"] == "0AMV_SH"
+    assert detail["name"] == "上证0AMV"
+    assert detail["trades"] == []
+    assert [bar["close"] for bar in detail["bars"]] == [100.0, 120.0]
+    assert detail["bars"][1]["member_count"] == 1

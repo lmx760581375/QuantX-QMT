@@ -20,6 +20,19 @@ from .types import Signal
 
 logger = logging.getLogger(__name__)
 
+
+def _quote_fields_from_aliases(field_aliases: Optional[Dict[str, str]]) -> List[str]:
+    fields: List[str] = []
+    for source in (field_aliases or {}).values():
+        text = str(source).strip()
+        if not text:
+            continue
+        if text.startswith("$"):
+            fields.append(text)
+        elif text.replace("_", "").isalnum():
+            fields.append(f"${text}")
+    return fields
+
 LOOKBACK_COVERAGE_TOLERANCE_DAYS = 10
 
 
@@ -112,7 +125,8 @@ class BacktestContext:
             provider_uri=getattr(self.exchange, "provider_uri", ""),
         )
 
-        self.exchange.load_quote_data(symbols, load_start, end)
+        extra_fields = _quote_fields_from_aliases(field_aliases)
+        self.exchange.load_quote_data(symbols, load_start, end, extra_fields=extra_fields)
 
         if self.exchange.quote is not None and not self.exchange.quote.empty:
             from quantx.core.factor_runtime import FactorRuntime, MarketPanel

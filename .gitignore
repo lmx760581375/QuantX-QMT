@@ -8,11 +8,30 @@
 !/data/meta/snapshots/security_master.csv
 !/data/meta/snapshots/industry_membership.csv
 !/data/meta/snapshots/sector_membership.csv
+!/data/reference/
+/data/reference/*
+!/data/reference/security_state/
+!/data/reference/security_state/**
+/data/reference/security_state/sync.pid
+!/data/derived/
+/data/derived/*
+!/data/derived/active_value_brick_ml/
+!/data/derived/active_value_brick_ml/**
 /qlib/**/data/
 
 # Generated artifacts and local archives
 /artifacts/
 /archived_runs/
+/tmp/**
+!/tmp/**/
+!/tmp/*.py
+!/tmp/**/*.py
+/.tmp/**
+!/.tmp/**/
+!/.tmp/*.py
+!/.tmp/**/*.py
+/.tmp/AlphaMaster/
+/.omx/
 .env
 *.zip
 *.log

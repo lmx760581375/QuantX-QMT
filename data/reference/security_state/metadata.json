@@ -1,0 +1,41 @@
+{
+  "created_at": "2026-07-15T20:13:56.029685+08:00",
+  "source": "Tushare Pro stock_st",
+  "api_url": "http://lianghua.nanyangqiankun.top",
+  "requested_start": "2016-08-31",
+  "requested_end": "2026-07-15",
+  "calendar_start": "20160831",
+  "calendar_end": "20260715",
+  "trading_days": 2394,
+  "observed_dates": 2370,
+  "empty_dates": 24,
+  "imputed_dates": 24,
+  "precoverage_empty_dates": 0,
+  "observed_rows": 329915,
+  "effective_daily_rows": 333507,
+  "interval_rows": 925,
+  "files": {
+    "observed": {
+      "path": "data/reference/security_state/st_observed.csv",
+      "sha256": "790ed1658cc2022f2700b3f84ea32dc14c8419db95003428f150552059f7bc4d"
+    },
+    "coverage": {
+      "path": "data/reference/security_state/coverage.csv",
+      "sha256": "d868d263a8d6b27ce9767720e05653d0788a21ebbd05906f759ee7d6a7e4eef8"
+    },
+    "daily": {
+      "path": "data/reference/security_state/st_daily.csv",
+      "sha256": "ce7efe24117a61020f57d8c2cd253ca894cab4765858d03a88c816f49af080f8"
+    },
+    "intervals": {
+      "path": "data/reference/security_state/st_intervals.csv",
+      "sha256": "47f5d2467c1d9b983a283fdaf9fd3010e1a80efa40cf829470672e00afb44c1a"
+    }
+  },
+  "notes": [
+    "Empty API responses after the first observed date are forward-filled from the previous observed trading date.",
+    "Rows before the first observed date remain empty and are never interpreted as confirmed non-ST states.",
+    "source_trade_date and is_imputed preserve provenance for every effective daily row.",
+    "Credentials are supplied only through TUSHARE_TOKEN/TS_TOKEN and are never persisted."
+  ]
+}

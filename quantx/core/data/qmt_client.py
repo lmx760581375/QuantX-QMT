@@ -187,6 +187,27 @@ class QMTClient:
         rows = [{"code": symbol} for symbol in self.get_stock_codes(sectors)]
         return pd.DataFrame(rows, columns=["code"])
 
+    def query_security_master(self, sectors: Optional[Iterable[str]] = None) -> pd.DataFrame:
+        """Fetch current QMT instrument names for the local security master.
+
+        QMT exposes ST/退市 risk labels through ``InstrumentName`` in
+        ``get_instrument_detail``. Sector lists for risk-warning boards are not
+        consistently populated, so the reliable path is to query details for
+        the selected stock universe.
+        """
+        rows: list[dict[str, object]] = []
+        for symbol in self.get_stock_codes(sectors):
+            detail = self.get_instrument_detail(symbol)
+            rows.append(_security_master_row(symbol, detail))
+        return pd.DataFrame(
+            rows,
+            columns=["symbol", "name", "exchange", "board", "list_date", "delist_date"],
+        )
+
+    def get_instrument_detail(self, symbol: str) -> dict:
+        detail = self.xtdata.get_instrument_detail(to_qmt_symbol(symbol))
+        return dict(detail or {})
+
     def query_dividend_data(
         self,
         symbol: str,
@@ -327,3 +348,37 @@ def _to_qmt_fields(fields: Optional[List[str]]) -> List[str]:
 def _is_supported_market(symbol: str) -> bool:
     normalized = normalize_symbol(symbol)
     return normalized.startswith(("SH", "SZ", "BJ")) and len(normalized) >= 8
+
+
+def _security_master_row(symbol: str, detail: dict) -> dict[str, object]:
+    normalized = normalize_symbol(symbol)
+    exchange = str(detail.get("ExchangeID") or normalized[:2]).upper()
+    raw_list_date = detail.get("OpenDate")
+    raw_delist_date = detail.get("ExpireDate")
+    return {
+        "symbol": normalized,
+        "name": detail.get("InstrumentName") or normalized,
+        "exchange": exchange,
+        "board": _board_from_symbol(normalized),
+        "list_date": _qmt_yyyymmdd(raw_list_date),
+        "delist_date": _qmt_yyyymmdd(raw_delist_date, blank_values={"0", "99999999"}),
+    }
+
+
+def _qmt_yyyymmdd(value, *, blank_values: set[str] | None = None) -> str | None:
+    text = str(value or "").strip()
+    if not text or text in (blank_values or {"0"}):
+        return None
+    if text.isdigit() and len(text) == 8:
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+    return None
+
+
+def _board_from_symbol(symbol: str) -> str:
+    if symbol.startswith("SH688"):
+        return "star"
+    if symbol.startswith(("SZ300", "SZ301")):
+        return "chinext"
+    if symbol.startswith("BJ"):
+        return "beijing"
+    return "mainboard"

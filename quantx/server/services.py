@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+import pandas as pd
 
 from quantx.core.analysis import annual_returns, build_next_session_guide, load_run_artifacts
 from quantx.core.analysis.patterns import find_similar_samples
@@ -28,8 +29,28 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_ROOT = PROJECT_ROOT / "configs" / "strategies"
 PRODUCTION_PROFILE = PROJECT_ROOT / "configs" / "production" / "daily_default.yaml"
 RUNS_ROOT = PROJECT_ROOT / "runs"
+DAILY_RUNS_ROOT = PROJECT_ROOT / "daily_runs"
 PATTERN_ANALYSIS_ROOT = PROJECT_ROOT / "artifacts" / "pattern_analysis"
 META_URI = PROJECT_ROOT / "data" / "meta" / "quantx_meta.sqlite"
+ACTIVE_VALUE_CSV = PROJECT_ROOT / "data" / "derived" / "0amv" / "daily.csv"
+AMV_SYMBOL_ALIASES = {
+    "0AMV": "0AMV_ALL",
+    "AMV": "0AMV_ALL",
+    "0AMV_ALL": "0AMV_ALL",
+    "AMV_ALL": "0AMV_ALL",
+    "0AMV_SH": "0AMV_SH",
+    "AMV_SH": "0AMV_SH",
+    "0AMV_SZ": "0AMV_SZ",
+    "AMV_SZ": "0AMV_SZ",
+    "0AMV_KC": "0AMV_KC",
+    "AMV_KC": "0AMV_KC",
+    "0AMV_STAR": "0AMV_KC",
+    "AMV_STAR": "0AMV_KC",
+    "0AMV_CY": "0AMV_CY",
+    "AMV_CY": "0AMV_CY",
+    "0AMV_CHINEXT": "0AMV_CY",
+    "AMV_CHINEXT": "0AMV_CY",
+}
 
 
 def _relative_to_root(path: Path, root: Path) -> str:
@@ -41,6 +62,26 @@ def _safe_child(root: Path, rel_path: str) -> Path:
     if root.resolve() not in path.parents and path != root.resolve():
         raise ValueError(f"Path escapes root: {rel_path}")
     return path
+
+
+def _read_json_if_exists(path: Path, default: Any = None) -> Any:
+    if not path.exists():
+        return {} if default is None else default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {} if default is None else default
+
+
+def _as_list(value: Any) -> List[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _daily_date_label(value: str) -> str:
+    text = str(value).replace("-", "")
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return str(value)
 
 
 def _candidate_symbols(candidates: Dict[str, Any]) -> List[str]:
@@ -707,6 +748,22 @@ class ReportService:
     def read_symbol_detail(self, run_id: str, symbol: str) -> Dict[str, Any]:
         report = self.read_report(run_id)
         summary = report["summary"]
+        normalized_amv_symbol = self._normalize_0amv_symbol(symbol)
+        if normalized_amv_symbol:
+            bars = self._read_0amv_bars(normalized_amv_symbol, summary["start_date"], summary["end_date"])
+            name = bars[0].get("name") if bars else normalized_amv_symbol
+            return {
+                "run_id": run_id,
+                "symbol": normalized_amv_symbol,
+                "name": name,
+                "meta": {"name": name, "source": "quantx-qmt-derived", "data_path": str(ACTIVE_VALUE_CSV)},
+                "summary": summary,
+                "provider_uri": str(ACTIVE_VALUE_CSV),
+                "bars": bars,
+                "trades": [],
+                "round_trips": [],
+                "positions": [],
+            }
         provider_uri = (
             report.get("explain", {})
             .get("config", {})
@@ -736,6 +793,39 @@ class ReportService:
             "round_trips": closed or self._round_trips(trades),
             "positions": position_rows,
         }
+
+    @staticmethod
+    def _normalize_0amv_symbol(symbol: str) -> str | None:
+        return AMV_SYMBOL_ALIASES.get(str(symbol or "").strip().upper())
+
+    @staticmethod
+    def _read_0amv_bars(symbol: str, start: str, end: str) -> List[Dict[str, Any]]:
+        if not ACTIVE_VALUE_CSV.exists():
+            raise FileNotFoundError(f"Missing 0AMV data file: {ACTIVE_VALUE_CSV}")
+        frame = pd.read_csv(ACTIVE_VALUE_CSV)
+        if frame.empty:
+            return []
+        frame["date"] = pd.to_datetime(frame["date"])
+        mask = (
+            (frame["symbol"].astype(str).str.upper() == symbol)
+            & (frame["date"] >= pd.Timestamp(start))
+            & (frame["date"] <= pd.Timestamp(end))
+        )
+        rows: List[Dict[str, Any]] = []
+        for _, row in frame.loc[mask].sort_values("date").iterrows():
+            rows.append({
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "symbol": str(row.get("symbol") or symbol),
+                "name": row.get("name"),
+                "open": _none_if_nan(row.get("open")),
+                "high": _none_if_nan(row.get("high")),
+                "low": _none_if_nan(row.get("low")),
+                "close": _none_if_nan(row.get("close")),
+                "volume": _none_if_nan(row.get("volume")),
+                "amount": _none_if_nan(row.get("amount")),
+                "member_count": _none_if_nan(row.get("member_count")),
+            })
+        return rows
 
     @staticmethod
     def _quote_to_bars(quote, symbol: str) -> List[Dict[str, Any]]:
@@ -795,6 +885,68 @@ class ReportService:
                 if lot["quantity"] <= 0:
                     open_lots.pop(0)
         return trips
+
+
+class DailyRunService:
+    """Read daily production artifacts for live strategy tracking."""
+
+    def __init__(self, root: Path = DAILY_RUNS_ROOT):
+        self.root = root
+
+    def list_runs(self) -> List[Dict[str, Any]]:
+        if not self.root.exists():
+            return []
+        rows: List[Dict[str, Any]] = []
+        for date_dir in sorted(self.root.iterdir(), reverse=True):
+            if not date_dir.is_dir():
+                continue
+            for profile_dir in sorted(date_dir.iterdir()):
+                if not profile_dir.is_dir():
+                    continue
+                status = _read_json_if_exists(profile_dir / "pipeline_status.json")
+                data_update = _read_json_if_exists(profile_dir / "data_update.json")
+                strategies = _as_list(_read_json_if_exists(profile_dir / "strategy_signals.json"))
+                rows.append({
+                    "date": _daily_date_label(date_dir.name),
+                    "date_key": date_dir.name,
+                    "profile": profile_dir.name,
+                    "run_dir": str(profile_dir),
+                    "ok": bool(status.get("ok", True)) if isinstance(status, dict) else True,
+                    "strategy_count": len([row for row in strategies if isinstance(row, dict) and row.get("ok", True)]),
+                    "position_count": sum(len((row or {}).get("positions") or []) for row in strategies if isinstance(row, dict)),
+                    "buy_count_today": sum(int((row or {}).get("buy_count_today") or 0) for row in strategies if isinstance(row, dict)),
+                    "sell_count_today": sum(int((row or {}).get("sell_count_today") or 0) for row in strategies if isinstance(row, dict)),
+                    "calendar_end": data_update.get("calendar_end") if isinstance(data_update, dict) else None,
+                    "updated_at": datetime.fromtimestamp(profile_dir.stat().st_mtime).isoformat(timespec="seconds"),
+                })
+        return rows
+
+    def read_run(self, date_key: str, profile: str) -> Dict[str, Any]:
+        run_dir = self._resolve_run_dir(date_key, profile)
+        if not run_dir.is_dir():
+            raise FileNotFoundError(f"Daily run not found: {date_key}/{profile}")
+        return {
+            "date": _daily_date_label(date_key),
+            "date_key": str(date_key).replace("-", ""),
+            "profile": profile,
+            "run_dir": str(run_dir),
+            "status": _read_json_if_exists(run_dir / "pipeline_status.json"),
+            "data_update": _read_json_if_exists(run_dir / "data_update.json"),
+            "daily_report": _read_json_if_exists(run_dir / "daily_report.json"),
+            "strategies": _as_list(_read_json_if_exists(run_dir / "strategy_signals.json")),
+            "positions_by_strategy": _read_json_if_exists(run_dir / "strategy_positions.json"),
+            "orders_by_strategy": _read_json_if_exists(run_dir / "suggested_orders.json"),
+            "next_session_guides": _read_json_if_exists(run_dir / "next_session_guides.json"),
+            "rejected_orders": _read_json_if_exists(run_dir / "rejected_orders.json"),
+            "report_html_path": str(run_dir / "report.html") if (run_dir / "report.html").exists() else None,
+            "report_md_path": str(run_dir / "report.md") if (run_dir / "report.md").exists() else None,
+        }
+
+    def _resolve_run_dir(self, date_key: str, profile: str) -> Path:
+        normalized = str(date_key).replace("-", "")
+        if not normalized.isdigit() or len(normalized) != 8:
+            raise ValueError("date_key must be YYYYMMDD or YYYY-MM-DD")
+        return _safe_child(_safe_child(self.root, normalized), profile)
 
 
 @dataclass

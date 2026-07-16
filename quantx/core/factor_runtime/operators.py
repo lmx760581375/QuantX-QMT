@@ -215,6 +215,31 @@ def _op_csratio(x):
     return ops.cs_mean(x)
 
 
+@operator("MarketBreadth", "cross_section")
+def _op_market_breadth(close, short_trend, long_trend, kdj_j=None, j_threshold=13.0):
+    return ops.market_breadth(close, short_trend, long_trend, kdj_j, float(j_threshold))
+
+
+@operator("MarketTotalAmount", "cross_section")
+def _op_market_total_amount(amount):
+    return ops.market_total_amount(amount)
+
+
+@operator("MarketIndustryCR", "cross_section")
+def _op_market_industry_cr(amount, industry, topn=3):
+    return ops.market_industry_cr(amount, industry, int(topn))
+
+
+@operator("MarketHHI", "cross_section")
+def _op_market_hhi(amount, scale=10000.0):
+    return ops.market_hhi(amount, float(scale))
+
+
+@operator("MarketCSD", "cross_section")
+def _op_market_csd(ret, weight):
+    return ops.market_csd(ret, weight)
+
+
 @operator("CSRank", "cross_section")
 def _op_csrank(x):
     return ops.cs_rank(x, pct=False)

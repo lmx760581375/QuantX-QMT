@@ -21,6 +21,10 @@ def build_strategy(config: Dict[str, Any], cost: TransactionCost):
         from quantx.strategies.market_regime_rotation import create_market_regime_rotation_strategy
 
         return create_market_regime_rotation_strategy(config, cost)
+    if kind == "decision_pipeline":
+        from quantx.strategies.prediction_strategy import create_prediction_decision_strategy
+
+        return create_prediction_decision_strategy(config)
     raise ValueError(f"Unsupported strategy.type: {kind}")
 
 
@@ -51,4 +55,8 @@ def explain_strategy(config: Dict[str, Any]) -> Dict[str, Any]:
                 "exit_unselected": True,
             },
         }
+    if kind == "decision_pipeline":
+        from quantx.strategies.prediction_strategy import explain_prediction_decision_strategy
+
+        return explain_prediction_decision_strategy(config)
     raise ValueError(f"Unsupported strategy.type: {kind}")

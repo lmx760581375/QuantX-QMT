@@ -1,10 +1,16 @@
 """Config runner tests."""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 
+from quantx.core.decision.clock import MarketTime, SessionPhase
+from quantx.core.decision.predictions import PredictionRecord, PredictionStore
 from quantx.core.engine import TransactionCost
 from quantx.core.engine.engine import BacktestConfig
 from quantx.tools.run_backtest import (
+    build_cost,
     build_backtest_config,
     dry_run_config,
     load_symbols,
@@ -67,6 +73,96 @@ def test_load_symbols_supports_named_wufu_etf_universe():
     assert len(symbols) == len(set(symbols))
 
 
+def test_load_symbols_can_resolve_frozen_prediction_universe(tmp_path):
+    signal_time = MarketTime(
+        "2024-01-02",
+        SessionPhase.AFTER_CLOSE,
+        datetime(2024, 1, 2, 15, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    path = tmp_path / "predictions.json"
+    checksum = PredictionStore(
+        [
+            PredictionRecord(signal_time, "SZ000001", 0.2, 5, "model", "fold", "schema"),
+            PredictionRecord(signal_time, "SH600000", 0.1, 5, "model", "fold", "schema"),
+        ]
+    ).write(path)
+    config = {
+        "data": {"universe": "prediction_store", "extra_symbols": ["SH511880"]},
+        "strategy": {"alpha": {"path": str(path), "checksum": checksum}},
+    }
+
+    assert load_symbols(config) == ["SH600000", "SZ000001", "SH511880"]
+
+
+def test_load_symbols_can_limit_prediction_universe_to_daily_topk(tmp_path):
+    first_time = MarketTime(
+        "2024-01-02",
+        SessionPhase.AFTER_CLOSE,
+        datetime(2024, 1, 2, 15, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    second_time = MarketTime(
+        "2024-01-03",
+        SessionPhase.AFTER_CLOSE,
+        datetime(2024, 1, 3, 15, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    path = tmp_path / "predictions.json"
+    PredictionStore([
+        PredictionRecord(first_time, "SZ000001", 0.9, 5, "model", "fold", "schema"),
+        PredictionRecord(first_time, "SH600000", 0.8, 5, "model", "fold", "schema"),
+        PredictionRecord(second_time, "SZ000002", 0.7, 5, "model", "fold", "schema"),
+        PredictionRecord(second_time, "SH600001", 0.6, 5, "model", "fold", "schema"),
+    ]).write(path)
+    config = {
+        "data": {"universe": "prediction_store", "prediction_pool_topk": 1, "extra_symbols": ["SH511880"]},
+        "strategy": {"alpha": {"path": str(path), "artifact_id": "model"}},
+    }
+
+    assert load_symbols(config) == ["SZ000001", "SZ000002", "SH511880"]
+
+
+def test_load_symbols_can_resolve_external_score_universe(tmp_path):
+    path = tmp_path / "scores.csv"
+    path.write_text(
+        "date,instrument,score\n"
+        "2025-01-02,SZ000001,0.2\n"
+        "2025-01-02,SH600000,0.1\n"
+        "2025-01-03,SZ000001,0.3\n",
+        encoding="utf-8",
+    )
+    config = {
+        "data": {"universe": "external_score", "extra_symbols": ["SH511880"]},
+        "selector": {"path": str(path), "instrument_col": "instrument"},
+    }
+
+    assert load_symbols(config) == ["SH600000", "SZ000001", "SH511880"]
+
+
+def test_load_symbols_external_score_universe_uses_selector_filters(tmp_path):
+    path = tmp_path / "scores.csv"
+    path.write_text(
+        "date,instrument,score\n"
+        "2025-01-02,SZ000001,0.9\n"
+        "2025-01-02,SH600000,0.8\n"
+        "2025-01-02,SZ000002,0.1\n"
+        "2025-01-03,SZ000003,0.7\n",
+        encoding="utf-8",
+    )
+    config = {
+        "data": {"universe": "external_score"},
+        "selector": {
+            "path": str(path),
+            "date_col": "date",
+            "instrument_col": "instrument",
+            "score_col": "score",
+            "score_floor": 0.2,
+            "sort": "score_desc",
+            "topk": 1,
+        },
+    }
+
+    assert load_symbols(config) == ["SZ000001", "SZ000003"]
+
+
 def test_load_symbols_excludes_indices_from_all_a(tmp_path):
     provider = tmp_path / "provider"
     instruments = provider / "instruments"
@@ -103,6 +199,20 @@ def test_build_backtest_config_prefers_execution_deal_price():
     }, TransactionCost())
 
     assert cfg.deal_price == "hlc3"
+
+
+def test_build_cost_accepts_asymmetric_slippage():
+    cost = build_cost({
+        "cost": {
+            "slippage": 0.01,
+            "buy_slippage": 0.003,
+            "sell_slippage": 0.0,
+        }
+    })
+
+    assert cost.slippage == 0.01
+    assert cost.buy_slippage == 0.003
+    assert cost.sell_slippage == 0.0
 
 
 def test_resolve_config_dates_supports_latest_end(tmp_path):

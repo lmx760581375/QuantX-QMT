@@ -8,7 +8,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from .sources import AkShareMetaSource, BaoStockMetaSource, MetaSourceError
+from .sources import AkShareMetaSource, BaoStockMetaSource, MetaSourceError, QMTMetaSource
 from .store import MetaStore
 
 
@@ -69,6 +69,14 @@ class MetaUpdateService:
             return MetaUpdateResult(ok=True, source="baostock", rows=rows, message="updated security master")
         except MetaSourceError as exc:
             return MetaUpdateResult(ok=False, source="baostock", message=str(exc))
+
+    def update_security_master_qmt(self, sectors: list[str] | None = None) -> MetaUpdateResult:
+        try:
+            frame = QMTMetaSource().fetch_security_master(sectors=sectors)
+            rows = self.store.upsert_security_master(frame, source="qmt")
+            return MetaUpdateResult(ok=True, source="qmt", rows=rows, message="updated security master")
+        except MetaSourceError as exc:
+            return MetaUpdateResult(ok=False, source="qmt", message=str(exc))
 
     def probe_akshare(self) -> Dict[str, object]:
         source = AkShareMetaSource()

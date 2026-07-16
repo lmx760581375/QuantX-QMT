@@ -9,12 +9,21 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
-from quantx.server.services import BacktestTaskService, ConfigService, DataService, MetaService, PatternAnalysisService, ReportService
+from quantx.server.services import (
+    BacktestTaskService,
+    ConfigService,
+    DailyRunService,
+    DataService,
+    MetaService,
+    PatternAnalysisService,
+    ReportService,
+)
 
 
 app = FastAPI(title="QuantX Workspace", version="0.1.0")
 configs = ConfigService()
 reports = ReportService()
+daily_runs = DailyRunService()
 tasks = BacktestTaskService()
 data_service = DataService()
 meta_service = MetaService()
@@ -136,6 +145,19 @@ def read_report_artifact(run_id: str, artifact: str):
 def read_report_symbol(run_id: str, symbol: str):
     try:
         return reports.read_symbol_detail(run_id, symbol)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/daily-runs")
+def list_daily_runs():
+    return daily_runs.list_runs()
+
+
+@app.get("/api/daily-runs/{date_key}/{profile}")
+def read_daily_run(date_key: str, profile: str):
+    try:
+        return daily_runs.read_run(date_key, profile)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
