@@ -1,0 +1,22 @@
+feature_store:
+  output_root: workdirs/feature_store
+  start: '2010-01-01'
+  end: '2026-07-15'
+  shard_size: 512
+
+reward_dataset:
+  root: workdirs/reward/market_all_h2_event_v1
+  kronos_root: workdirs/feature_store
+  start: '2010-01-01'
+  end: '2026-07-15'
+  candidate_mode: all_market
+  universe: all_a
+  candidate_topn: 50
+  horizon: 2
+  target_start_offset: 1
+  target_price_mode: entry_open
+  trend_horizon: 2
+  trend_threshold: 0.05
+  lookback: 60
+  min_history_rows: 55
+  target_chunk_size: 200000

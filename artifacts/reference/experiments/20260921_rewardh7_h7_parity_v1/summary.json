@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_rewardh7_h7_parity_v1",
+  "name": "reward_h7_top5_portfolio_target",
+  "description": null,
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 5100,
+  "final_value": 350233960.8576739,
+  "total_return": 2.502339608576739,
+  "annual_return": 0.21563126792368226,
+  "max_drawdown": -0.3781783737418387,
+  "sharpe": 0.6891572296410401,
+  "trades": 2278,
+  "buys": 1106,
+  "sells": 1172,
+  "final_cash": 398708.0061638355,
+  "final_positions": 5,
+  "time_stats": {
+    "phase1_signals": 8.322057485580444,
+    "phase2_execution": 7.988995552062988,
+    "total": 39.14897537231445
+  },
+  "signal_errors": []
+}

@@ -1,0 +1,24 @@
+{
+  "kind": "quantx_market_score_artifact_v1",
+  "status": "score_merged_ready_for_quantx",
+  "rows": 7183854,
+  "dates": 1633,
+  "instruments": 5174,
+  "start": "2020-01-02",
+  "end": "2026-09-24",
+  "score_columns": [
+    "reward_score_7d"
+  ],
+  "sha256": {
+    "historical": "3cda1bf20a4f2ba6a7126e3032e1d6651479e52e6b47df4fa94c777a986cd3b8",
+    "incremental": "509c7b254922ef014c75d15334d3cc05caf71bf1477645678cff7cefcf6e776c",
+    "merged": "ea0d6ee77fd42ab4e555b1ed6256db010af38b0b8aba13a6928ea315ffa80534"
+  },
+  "merge_contract": "historical artifact through 2026-06-02; label-free incremental inference from 2026-06-03 through 2026-09-24",
+  "overlap_validation": {
+    "start": "2026-05-25",
+    "end": "2026-06-02",
+    "mean_spearman": 0.9998727831456126,
+    "top5_overlap_each_day": 5
+  }
+}

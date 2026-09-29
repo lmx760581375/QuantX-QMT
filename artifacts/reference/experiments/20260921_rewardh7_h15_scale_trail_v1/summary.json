@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_rewardh7_h15_scale_trail_v1",
+  "name": "reward_h7_top5_h15_scale12_keep85_trailp15dd10_2020_2026_all_a",
+  "description": "在 H15 盈利减仓保留 runner 基础上，持有至少 7 日、峰值收益超过 15% 后若自峰值回撤超过 10% 则全清；用于验证保护已有利润是否优于纯时间退出。",
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 5100,
+  "final_value": 416925420.5022068,
+  "total_return": 3.1692542050220682,
+  "annual_return": 0.24909269344435336,
+  "max_drawdown": -0.414462756150915,
+  "sharpe": 0.8398156304459874,
+  "trades": 1177,
+  "buys": 523,
+  "sells": 654,
+  "final_cash": 5603526.708766937,
+  "final_positions": 5,
+  "time_stats": {
+    "phase1_signals": 8.305455446243286,
+    "phase2_execution": 6.539754629135132,
+    "total": 40.29533362388611
+  },
+  "signal_errors": []
+}

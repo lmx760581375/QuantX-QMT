@@ -1,0 +1,54 @@
+{
+  "kind": "quantx_static_sleeve_wts3_reward5_v1",
+  "method": "initial-capital static 50/50 sleeves; no rebalance and no cross-sleeve cash transfer",
+  "period": [
+    "2020-01-02",
+    "2026-06-02"
+  ],
+  "frozen_2026_09_27_result": {
+    "total_return": 6.79357732731842,
+    "annual_return": 0.3960008334144518,
+    "max_drawdown": -0.21892660126341446,
+    "sharpe": 1.498225022860439,
+    "sortino": 2.1611145983689592,
+    "calmar": 1.8088292200634861,
+    "monthly_win_rate": 0.6363636363636364
+  },
+  "pre_repair_2026_09_28": {
+    "total_return": 5.626462987702697,
+    "max_drawdown": -0.3583290008328882,
+    "sharpe": 1.260217904064957,
+    "status": "invalidated_by_truncated_raw_csv_and_instrument_ranges"
+  },
+  "repaired_2026_09_28": {
+    "total_return": 6.969025359244595,
+    "annual_return": 0.38173186569111883,
+    "max_drawdown": -0.21251958252552205,
+    "sharpe": 1.4053769016221687,
+    "sortino": 2.028491111627872,
+    "calmar": 1.7962197231649257,
+    "monthly_win_rate": 0.6282051282051282
+  },
+  "current_component_runs": {
+    "reward_h15_top5": {
+      "run_id": "reward_h15_repaired",
+      "total_return": 3.7068691946139554,
+      "max_drawdown": -0.4395652483992125,
+      "sharpe": 0.8663795408968561,
+      "symbols": 5176
+    },
+    "weak_to_strong_pos3": {
+      "run_id": "weak_to_strong_pos3_repaired",
+      "total_return": 10.231181523875236,
+      "max_drawdown": -0.3053120181273309,
+      "sharpe": 1.3108669910075086,
+      "symbols": 3188
+    }
+  },
+  "data_repair": {
+    "affected_symbols": 115,
+    "issue": "incremental full refresh replaced complete raw CSV histories with truncated windows and then overwrote Qlib features and instrument ranges",
+    "upstream_fix_commit": "afa410c",
+    "backup": "/tmp/quantx_data_repair_backup_20260928"
+  }
+}

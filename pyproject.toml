@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantx-reward"
+version = "1.0.0"
+description = "可复现的 H7 Reward、弱转强与真实双 sleeve 回测项目"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.23,<2",
+    "pandas>=2.0",
+    "pyarrow>=14",
+    "PyYAML>=6",
+    "matplotlib>=3.5",
+    "baostock==0.9.2",
+    "pyqlib==0.9.7",
+    "torch>=2.1",
+    "tensorboard>=2.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "ruff>=0.1",
+]
+repro = [
+    "numpy==1.23.4",
+    "pandas==2.2.2",
+    "pyarrow==20.0.0",
+    "PyYAML==6.0.1",
+    "matplotlib==3.9.3",
+    "pyqlib==0.9.7",
+    "torch==2.11.0",
+    "tensorboard==2.16.2",
+    "baostock==0.9.2",
+]
+
+[project.scripts]
+quantx-reward = "quantx_reward.cli:main"
+quantx-backtest = "quantx.tools.run_backtest:main"
+reward-prepare-features = "models.reward.prepare_features:main"
+reward-prepare-dataset = "models.reward.prepare_dataset:main"
+reward-train = "models.reward.train:main"
+reward-train-h7-absolute = "models.reward.train_h7_absolute:main"
+reward-infer = "models.reward.infer:main"
+reward-launch = "models.reward.launcher:main"
+
+[tool.setuptools.packages.find]
+include = ["quantx*", "quantx_reward*", "models*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

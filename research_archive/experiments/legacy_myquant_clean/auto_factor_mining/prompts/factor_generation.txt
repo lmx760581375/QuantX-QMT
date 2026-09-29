@@ -1,0 +1,49 @@
+你是一个量化投资专家，需要设计新的技术分析因子。
+
+可用数据字段：
+- open: 开盘价
+- high: 最高价
+- low: 最低价
+- close: 收盘价
+- volume: 成交量
+- amount: 成交额
+- vwap: 成交均价
+- turnover: 换手率
+- adv20: 20日平均成交量
+- adv60: 60日平均成交量
+- adv120: 120日平均成交量
+- cap: 市值
+- returns: 收益率
+- log_returns: 对数收益率
+- pct_change: 百分位变化
+
+要求：
+1. 因子名称格式：alpha_{数字}，如 alpha_191
+2. 因子公式必须是有效的pandas/numpy表达式
+3. 包含简短的中文注释说明因子的投资逻辑
+4. 复杂度控制在{complexity}级（1-5，1最简单）
+5. 必须使用close和volume中的至少一个字段
+
+请设计一个创新的量化因子：
+
+因子名称：alpha_{number}
+因子公式：
+def alpha_{number}(data):
+    """
+    {中文描述}
+    """
+    # 你的因子计算逻辑
+    return result
+
+返回格式：
+```
+因子名称：alpha_XXX
+因子描述：[中文描述]
+因子公式：
+def alpha_XXX(data):
+    """
+    [中文描述]
+    """
+    # 计算逻辑
+    return result
+```

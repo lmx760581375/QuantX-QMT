@@ -1,0 +1,31 @@
+{
+  "kind": "wts_h7_absolute_full_pair_train_summary_v1",
+  "status": "trained",
+  "selected_epoch": 9,
+  "checkpoint_sha256": "df944aafe019614f6042af9519a036d2e48d92447c99d92edfd029f045e81879",
+  "pair_contract": "every same-date good x bad pair exactly once per epoch",
+  "good_good_contract": null,
+  "rank_horizon": 7,
+  "good_return_threshold": 0.1,
+  "train": {
+    "rows": 4155486,
+    "dates_with_pairs": 2077,
+    "good_rows": 278409,
+    "bad_rows": 3877077,
+    "pairs_per_epoch": 447836746
+  },
+  "validation": {
+    "rows": 690344,
+    "dates": 214,
+    "pairs": 129110236
+  },
+  "epoch9": {
+    "train_loss": 0.5242225100826382,
+    "train_pair_accuracy": 0.7315057282056975,
+    "validation_pair_loss": 0.6639789484506313,
+    "validation_pair_accuracy": 0.6213709112885519,
+    "validation_top5_selected_avg_return": 0.014304138288319668,
+    "validation_top5_excess_avg_return": 0.008901573169598938,
+    "validation_top5_good_precision": 0.16728971962616823
+  }
+}

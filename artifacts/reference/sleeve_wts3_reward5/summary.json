@@ -1,0 +1,16 @@
+{
+  "reward_run": "reward_h15_repaired",
+  "wts_run": "weak_to_strong_pos3_repaired",
+  "reward_weight": 0.5,
+  "wts_weight": 0.5,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "method": "initial-capital static sleeves; no rebalancing or cross-sleeve cash transfer",
+  "monthly_win_rate_definition": "positive monthly return; calendar-month chart aggregates positive-month frequency across available years",
+  "figures": {
+    "equity_curve": "/tmp/quantx_reward_repaired_validate/sleeve/01_收益曲线.png",
+    "drawdown": "/tmp/quantx_reward_repaired_validate/sleeve/02_回撤曲线.png",
+    "monthly_returns": "/tmp/quantx_reward_repaired_validate/sleeve/03_月度收益.png",
+    "monthly_win_rate": "/tmp/quantx_reward_repaired_validate/sleeve/04_月度胜率.png"
+  }
+}

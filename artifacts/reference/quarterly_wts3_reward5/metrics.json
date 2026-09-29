@@ -1,0 +1,20 @@
+{
+  "final_value": 1113117869.0932522,
+  "total_return": 10.131178690932522,
+  "annual_return": 0.42960607225201586,
+  "annual_volatility": 0.2812352564760608,
+  "downside_volatility": 0.18267468805280357,
+  "sharpe": 1.527568334194915,
+  "sortino": 2.3517547878764398,
+  "max_drawdown": -0.2331523588547053,
+  "calmar": 1.842598009140176,
+  "order_count": 3496,
+  "trade_count": 3430,
+  "buy_count": 1519,
+  "sell_count": 1911,
+  "reject_count": 66,
+  "total_cost": 64753687.804457374,
+  "avg_position_count": 7.962056303549572,
+  "max_position_count": 16,
+  "avg_cash_ratio": 0.10510601339813634
+}

@@ -1,0 +1,78 @@
+name: reward_v1_epoch009_top5_runner
+title: RM v1 epoch9 Top5 H7 Runner
+description: H7绝对收益full-pair模型；盈利10%时卖出85%，15% runner回撤4%或H7退出。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: '2020-01-02'
+  end: latest
+  look_back_days: 60
+fields:
+  close: $close
+signals:
+  buy_signal: close > 0
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: close
+  sort: score_desc
+  topk: 5
+  lag: 1
+  wrap_first_signal: false
+  reason: reward_v1_epoch009_top5_h7
+  external_score:
+    path: artifacts/scores/reward_v1.parquet
+    date_col: signal_date
+    instrument_col: instrument
+    score_col: reward_score_7d
+    missing: drop
+    require_artifact_manifest: true
+rebalance:
+  type: equal_weight
+  max_positions: 5
+  weight_scope: portfolio_target
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+  exclude_partial_positions_from_slots: true
+execution:
+  deal_price: close
+  price_jump_limit: 0.095
+  max_position_weight: 0.22
+  trim_overweight_positions: false
+  sell_rules:
+  - name: tp10_keep15
+    when: pnl_pct >= 0.10 and remaining_position_pct > 0.15
+    action: sell_to_position_pct
+    position_pct: 0.15
+  - name: runner_trail04
+    when: peak_pnl_pct >= 0.10 and drawdown_from_peak <= -0.04
+    action: sell_all
+  - name: time_stop_h7
+    when: holding_days >= 7
+    action: sell_all
+  buy:
+    sizing: target_weight
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.001
+engine:
+  init_cash: 100000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: true
+metadata:
+  model: reward_v1_h7_absolute_full_pair
+  checkpoint_epoch: 9
+  exit_profile: tp10_keep15_trail04

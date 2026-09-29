@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_wts_reward_slot_f2_v1",
+  "name": "weak_reward_slot_filler_f2_replace_worst_2020_2026",
+  "description": "总仓位固定五只。满仓时新的弱转强信号可清仓当前收益最低且可卖的 Reward H15 持仓，即使该 Reward 持仓仍盈利。",
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 5100,
+  "final_value": 228606107.90362075,
+  "total_return": 1.2860610790362075,
+  "annual_return": 0.13746972282421122,
+  "max_drawdown": -0.5841664068409896,
+  "sharpe": 0.378501614371392,
+  "trades": 649,
+  "buys": 295,
+  "sells": 354,
+  "final_cash": 716.7369337417185,
+  "final_positions": 5,
+  "time_stats": {
+    "phase1_signals": 8.265610218048096,
+    "phase2_execution": 6.999166011810303,
+    "total": 84.9433696269989
+  },
+  "signal_errors": []
+}

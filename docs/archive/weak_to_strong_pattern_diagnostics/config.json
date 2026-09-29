@@ -1,0 +1,34 @@
+{
+  "runs": [
+    "runs/weak_to_strong_2016_2026_pattern_source"
+  ],
+  "output_dir": "artifacts/pattern_analysis",
+  "analysis_id": "weak_to_strong_2016_2026_patterns",
+  "raw_data_dir": "data/raw/baostock",
+  "provider_uri": "data/qlib_data_fixed",
+  "prefer_qlib": true,
+  "pre_n": 40,
+  "post_n": 15,
+  "min_pre_bars": 20,
+  "min_post_bars": 0,
+  "label_config": {
+    "success_return_threshold": 0.05,
+    "failure_return_threshold": 0.0,
+    "hard_loss_threshold": 0.05,
+    "max_adverse_threshold": 0.08,
+    "quick_confirm_days": 5,
+    "quick_confirm_return": 0.04,
+    "opportunity_return_threshold": 0.08,
+    "fade_drawdown_threshold": 0.06
+  },
+  "models": [
+    "logistic_regression",
+    "random_forest",
+    "lightgbm"
+  ],
+  "n_clusters": 8,
+  "random_state": 42,
+  "build_models": true,
+  "build_clusters": true,
+  "render_report": true
+}

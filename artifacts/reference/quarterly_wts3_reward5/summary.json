@@ -1,0 +1,24 @@
+{
+  "run_id": "20260929_dual_sleeve_quarterly65_35_to_20260928",
+  "name": "dual_sleeve_wts_65%_rm_35%_quarterly",
+  "description": "WTS Top3 与 RM Top5 runner 独立账户，按计划仅划拨可用现金。",
+  "start_date": "2020-01-02",
+  "end_date": "2026-09-28",
+  "initial_cash": 100000000.0,
+  "final_value": 1113117869.0932522,
+  "total_return": 10.131178690932522,
+  "annual_return": 0.42960607225201586,
+  "max_drawdown": -0.2331523588547053,
+  "sharpe": 1.527568334194915,
+  "trades": 3430,
+  "buys": 1519,
+  "sells": 1911,
+  "final_cash": 71711842.35401237,
+  "final_positions": 6,
+  "schedule": "quarterly",
+  "target_weights": {
+    "wts": 0.65,
+    "rm": 0.35
+  },
+  "unfilled_transfer": 0.0
+}

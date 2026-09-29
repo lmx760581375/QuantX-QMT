@@ -1,0 +1,9 @@
+name: quantx-reward
+channels:
+  - defaults
+dependencies:
+  - python=3.10.13
+  - pip
+  - pip:
+      - --index-url=https://pypi.hobot.cc/simple
+      - -e .[dev,repro]

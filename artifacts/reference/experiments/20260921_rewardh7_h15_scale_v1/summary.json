@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_rewardh7_h15_scale_v1",
+  "name": "reward_h7_top5_h15_scale12_keep85_2020_2026_all_a",
+  "description": "在 H15 时间退出基础上，单次收益超过 12% 时减至初始仓位的 85%，剩余仓位继续持有；用于隔离验证让利减仓是否改善风险收益。",
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 5100,
+  "final_value": 410184683.47275466,
+  "total_return": 3.1018468347275467,
+  "annual_return": 0.2459249672167625,
+  "max_drawdown": -0.4147440432764371,
+  "sharpe": 0.7985775962283499,
+  "trades": 1181,
+  "buys": 520,
+  "sells": 661,
+  "final_cash": 2503471.898486316,
+  "final_positions": 5,
+  "time_stats": {
+    "phase1_signals": 8.559933423995972,
+    "phase2_execution": 6.475473165512085,
+    "total": 41.105379819869995
+  },
+  "signal_errors": []
+}

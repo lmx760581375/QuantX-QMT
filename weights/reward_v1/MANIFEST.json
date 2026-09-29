@@ -1,0 +1,50 @@
+{
+  "model_name": "reward_v1_h7_absolute_full_pair_epoch9",
+  "reward_checkpoint": {
+    "path": "reward_epoch009_inference.pt",
+    "chunk_glob": "chunks/reward_epoch009_inference.pt.part-*",
+    "chunk_count": 4,
+    "sha256": "df944aafe019614f6042af9519a036d2e48d92447c99d92edfd029f045e81879",
+    "kind": "wts_frozen_ae_reward_transformer_h7_absolute_full_pair_v1",
+    "epoch": 9,
+    "contains_optimizer": false
+  },
+  "frozen_autoencoder": {
+    "path": "ae_epoch020.pt",
+    "chunk_glob": "chunks/ae_epoch020.pt.part-*",
+    "chunk_count": 4,
+    "sha256": "d4b1532b8124c70215d3a067820748dcd1026f794f3c4f53bf1467fc9a2867f1",
+    "epoch": 20
+  },
+  "preprocessing_scaler": {
+    "path": "preprocessing/pre2020_eval2020_2026_raw_relative_scaler.json",
+    "sha256": "1d347093f73e8a6285fdbdf052f5a26a98e9a6327173aacdad280f1a02fd89fa",
+    "format": "FeatureScaler JSON v1",
+    "input_mode": "raw_relative",
+    "feature_dimensions": {
+      "raw": 10,
+      "derived": 42,
+      "market": 20,
+      "candidate": 6
+    },
+    "fit_sample_count": 4096,
+    "fit_token_count": 245760,
+    "fit_seed": 20260717,
+    "fit_date_range": [
+      "2010-05-04",
+      "2010-05-31"
+    ],
+    "policy": "immutable; never refit during new-data inference"
+  },
+  "training_contract": {
+    "rank_horizon": 7,
+    "good_return_threshold": 0.1,
+    "pairing": "same-date exact Cartesian product of every good and every bad",
+    "good_good_pairs": false
+  },
+  "score_contract": {
+    "rank_horizon": 7,
+    "output_column": "reward_score_7d",
+    "transform": "sigmoid(reward_logit)"
+  }
+}

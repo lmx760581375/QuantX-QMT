@@ -1,0 +1,7 @@
+name: reward_h15_weak_to_strong_pos3_static_50_50
+reward_strategy: reward-h15
+weak_to_strong_strategy: weak-to-strong-pos3
+reward_weight: 0.5
+weak_to_strong_weight: 0.5
+method: initial_capital_static_sleeves
+description: Reward H15保持Top5与五仓不变，弱转强最大持仓缩减为3只；两个独立子账户仅在初始时按50/50分配资金。

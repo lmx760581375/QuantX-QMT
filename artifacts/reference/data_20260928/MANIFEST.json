@@ -1,0 +1,29 @@
+{
+  "kind": "quantx_daily_data_manifest_v1",
+  "source": "baostock",
+  "adjustflag": "2",
+  "coverage": {
+    "start": "2010-01-04",
+    "end": "2026-09-28",
+    "date_count": 4065,
+    "instrument_count": 5181,
+    "calendar_sha256": "5cc60a1ad8a118b14c319aafbb54f274cdf12da897f804f7b82adbe292c9fd78",
+    "instruments_sha256": "a35be598ac2fa92c0565054227d64d8e197a9040a8e207b41cffe16d6c1830e2",
+    "scope": "stock symbols used by the Reward feature store"
+  },
+  "raw_stock_tree": {
+    "file_count": 5181,
+    "total_bytes": 1530329505,
+    "sha256": "20ca7f12b764cc69db7a988173a197c3ef321dd8ad9b0f9bc4c39cfc3c35ff2e"
+  },
+  "qlib_tree": {
+    "file_count": 41449,
+    "total_bytes": 442201514,
+    "sha256": "a04cad3b44caf484f4108e217f12548b94228a0d50d7b0850d1d65cb4eedcb80"
+  },
+  "historical_st": null,
+  "notes": [
+    "This manifest fingerprints the exact data tree used for the 2026-09-28 reference backtest.",
+    "A fresh BaoStock download may differ if the upstream provider revises historical forward-adjusted prices."
+  ]
+}

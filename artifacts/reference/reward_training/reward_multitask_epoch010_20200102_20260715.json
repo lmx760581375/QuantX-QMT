@@ -1,0 +1,314 @@
+{
+  "core_columns": [
+    "signal_date",
+    "instrument"
+  ],
+  "created_at": "2026-07-26T18:27:07+08:00",
+  "dates": 1552,
+  "end": "2026-06-02",
+  "file_size_bytes": 55301478,
+  "instruments": 5173,
+  "kind": "quantx_market_score_artifact_v1",
+  "metadata": {
+    "ae_checkpoint": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_pre2020_v1/runs/market-all-pre2020-ae08-abs-20260717-144320/checkpoints/ae_epoch_020.pt",
+    "ae_model_config": {
+      "candidate_dim": 6,
+      "d_candidate": 16,
+      "d_market": 32,
+      "d_model": 96,
+      "d_stock": 64,
+      "denoiser_type": "mlp",
+      "diffusion_steps": 100,
+      "dit_d_model": 384,
+      "dit_dropout": 0.1,
+      "dit_heads": 8,
+      "dit_layers": 6,
+      "dit_mlp_ratio": 3.65,
+      "flow_steps": 20,
+      "generative_hidden_dim": 3200,
+      "generative_objective": "flow",
+      "horizon": 30,
+      "inference_steps": 0,
+      "latent_dim": 128,
+      "latent_tokens": 27,
+      "lookback": 60,
+      "n_heads": 4,
+      "n_layers": 4
+    },
+    "checkpoint": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/checkpoints/reward_epoch_010.pt",
+    "distributed_inference": {
+      "ranks": [
+        {
+          "batch_size": 1952,
+          "dates": 259,
+          "elapsed_sec": 91.93419656110927,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank00.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 0,
+          "rank_horizon": 7,
+          "rows": 1133812,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank00.parquet"
+        },
+        {
+          "batch_size": 1952,
+          "dates": 259,
+          "elapsed_sec": 90.05574420606717,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank01.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 1,
+          "rank_horizon": 7,
+          "rows": 1132896,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank01.parquet"
+        },
+        {
+          "batch_size": 1952,
+          "dates": 259,
+          "elapsed_sec": 90.8140796427615,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank02.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 2,
+          "rank_horizon": 7,
+          "rows": 1132583,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank02.parquet"
+        },
+        {
+          "batch_size": 1952,
+          "dates": 259,
+          "elapsed_sec": 91.25351498601958,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank03.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 3,
+          "rank_horizon": 7,
+          "rows": 1132900,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank03.parquet"
+        },
+        {
+          "batch_size": 1952,
+          "dates": 258,
+          "elapsed_sec": 92.96682835835963,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank04.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 4,
+          "rank_horizon": 7,
+          "rows": 1127497,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank04.parquet"
+        },
+        {
+          "batch_size": 1952,
+          "dates": 258,
+          "elapsed_sec": 89.86634600767866,
+          "metric_horizons": [
+            7
+          ],
+          "metric_shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank05.metrics.parquet",
+          "model_score_columns": [
+            "reward_return_score_7d",
+            "reward_sharpe_score_7d",
+            "reward_drawdown_score_7d"
+          ],
+          "peak_memory_bytes": 2110957056,
+          "peak_memory_fraction": 0.06267736195593798,
+          "probe_attempts": [
+            {
+              "batch_size": 1952,
+              "status": "manual_or_cpu"
+            }
+          ],
+          "rank": 5,
+          "rank_horizon": 7,
+          "rows": 1128494,
+          "scaler_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/data/scalers/pre2020_eval2020_2026_raw_relative_scaler.json",
+          "shard_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_ddp_shards/rank05.parquet"
+        }
+      ],
+      "world_size": 6
+    },
+    "fold_id": "pre2020_eval2020_2026",
+    "formal_status": "score_exported_quantx_not_run",
+    "label_mode": "multitask",
+    "loop_contract": null,
+    "model_family": "frozen_ae_multitask_reward_transformer",
+    "offline_metrics_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715_full_metrics.json",
+    "path_quality_diagnostics_path": null,
+    "prediction_split": "prediction",
+    "rank_horizon": 7,
+    "reward_architecture": "transformer",
+    "reward_backbone": "frozen_ae",
+    "reward_config": {
+      "cond_dim": 128,
+      "cond_tokens": 27,
+      "d_model": 768,
+      "dropout": 0.05,
+      "mlp_ratio": 4.0,
+      "n_heads": 12,
+      "n_layers": 7,
+      "score_heads": [
+        "return",
+        "sharpe",
+        "drawdown"
+      ]
+    },
+    "row_selection": {
+      "mode": "full_selected_cross_sections",
+      "rows": 6788182
+    },
+    "score_contract": {
+      "column": "reward_return_topn_risk_score_7d",
+      "model_score_columns": [
+        "reward_return_score_7d",
+        "reward_sharpe_score_7d",
+        "reward_drawdown_score_7d"
+      ],
+      "model_score_range": "[1e-6, 1 - 1e-6]",
+      "model_score_transform": "sigmoid(reward_logit)",
+      "rank_horizon": 7,
+      "score_columns": [
+        "reward_return_score_7d",
+        "reward_sharpe_score_7d",
+        "reward_drawdown_score_7d",
+        "reward_return_topn_risk_score_7d"
+      ],
+      "two_stage_selection": {
+        "contract": "per signal_date: return TopN, then weighted same-date Sharpe/drawdown rank rerank",
+        "primary_score_column": "reward_return_topn_risk_score_7d",
+        "return_candidate_score_column": "reward_return_score_7d",
+        "return_top_n": 50,
+        "risk_rank_weights": {
+          "drawdown": 0.5,
+          "sharpe": 0.5
+        },
+        "risk_score_columns": {
+          "drawdown": "reward_drawdown_score_7d",
+          "sharpe": "reward_sharpe_score_7d"
+        }
+      }
+    },
+    "signal_date_selection": {
+      "dates": 1552,
+      "end": "2026-07-15",
+      "start": "2020-01-02"
+    },
+    "trend_threshold": 0.05
+  },
+  "rows": 6788182,
+  "schema_version": 1,
+  "score_columns": [
+    "reward_return_score_7d",
+    "reward_sharpe_score_7d",
+    "reward_drawdown_score_7d",
+    "reward_return_topn_risk_score_7d"
+  ],
+  "score_coverage": {
+    "reward_drawdown_score_7d": {
+      "dates": 1552,
+      "end": "2026-06-02",
+      "instruments": 5173,
+      "rows": 6788182,
+      "start": "2020-01-02"
+    },
+    "reward_return_score_7d": {
+      "dates": 1552,
+      "end": "2026-06-02",
+      "instruments": 5173,
+      "rows": 6788182,
+      "start": "2020-01-02"
+    },
+    "reward_return_topn_risk_score_7d": {
+      "dates": 1552,
+      "end": "2026-06-02",
+      "instruments": 5173,
+      "rows": 6788182,
+      "start": "2020-01-02"
+    },
+    "reward_sharpe_score_7d": {
+      "dates": 1552,
+      "end": "2026-06-02",
+      "instruments": 5173,
+      "rows": 6788182,
+      "start": "2020-01-02"
+    }
+  },
+  "score_path": "/home/users/mingxiao.li/git/quantization/QuantX-QMT-qmt-mac/tmp/weak-to-strong-diffusion-v1/market_all_close2close_balanced_v2/runs/reward-multitask-7d-return005-risk005-top50-10ep-gate-20260726-172019/score_artifacts/reward_multitask_epoch010_20200102_20260715.parquet",
+  "start": "2020-01-02",
+  "status": "exported"
+}

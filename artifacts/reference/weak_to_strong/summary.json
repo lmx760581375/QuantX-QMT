@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_wts_pos5_common_cost_v1",
+  "name": "weak_to_strong_pos5_common_cost_2020_2026_mainboard",
+  "description": "保留弱转强代表策略的入场、max_positions=5、topk=4、盈利减仓与退出规则；仅将区间固定为 Reward 对照区间，并将费用和滑点口径对齐至 Reward 回测，用于双 sleeve 合成。",
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 3137,
+  "final_value": 619956447.7042284,
+  "total_return": 5.199564477042284,
+  "annual_return": 0.32872940964470976,
+  "max_drawdown": -0.33994620178382484,
+  "sharpe": 1.0043552658662351,
+  "trades": 793,
+  "buys": 345,
+  "sells": 448,
+  "final_cash": 258852119.36183828,
+  "final_positions": 3,
+  "time_stats": {
+    "phase1_signals": 1.2288451194763184,
+    "phase2_execution": 6.352149724960327,
+    "total": 28.837266445159912
+  },
+  "signal_errors": []
+}

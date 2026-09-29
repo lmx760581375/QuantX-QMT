@@ -1,0 +1,16 @@
+{
+  "reward_run": "20260921_rewardh7_h15_only_v1",
+  "wts_run": "20260921_wts_pos5_common_cost_v1",
+  "reward_weight": 0.5,
+  "wts_weight": 0.5,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "method": "initial-capital static sleeves; no rebalancing or cross-sleeve cash transfer",
+  "monthly_win_rate_definition": "positive monthly return; calendar-month chart aggregates positive-month frequency across available years",
+  "figures": {
+    "equity_curve": "artifacts/reference/01_收益曲线.png",
+    "drawdown": "artifacts/reference/02_回撤曲线.png",
+    "monthly_returns": "artifacts/reference/03_月度收益.png",
+    "monthly_win_rate": "artifacts/reference/04_月度胜率.png"
+  }
+}

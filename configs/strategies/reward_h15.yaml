@@ -1,0 +1,65 @@
+name: reward_h7_top5_h15_only_2020_2026_all_a
+title: Reward H7 Top5 延长至 H15
+description: 保持 Reward H7 Top5 的候选、T+1、成本、目标权重和仓位上限不变，仅将时间退出从第 7 个交易日改为第 15 个交易日，用于隔离验证延长持有本身的贡献。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a
+  start: '2020-01-02'
+  end: '2026-06-02'
+  look_back_days: 60
+fields:
+  close: $close
+signals:
+  buy_signal: close > 0
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: close
+  sort: score_desc
+  topk: 5
+  lag: 1
+  wrap_first_signal: false
+  reason: reward_h7_top5_h15_only
+  external_score:
+    path: artifacts/scores/reward_v1.parquet
+    date_col: signal_date
+    instrument_col: instrument
+    score_col: reward_return_topn_risk_score_7d
+    missing: drop
+    require_artifact_manifest: true
+rebalance:
+  type: equal_weight
+  max_positions: 5
+  weight_scope: portfolio_target
+  cash_use_ratio: 0.98
+  buy_only_new_positions: true
+execution:
+  deal_price: close
+  price_jump_limit: 0.095
+  max_position_weight: 0.22
+  sell_rules:
+  - name: time_stop_h15
+    when: holding_days >= 15
+    action: sell_all
+  buy:
+    sizing: target_weight
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: true
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.0005
+  min_commission: 5.0
+  stamp_tax_rate: 0.0001
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.001
+engine:
+  init_cash: 100000000
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: true
+  auto_adjust_buy_quantity: true

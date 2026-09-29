@@ -1,0 +1,34 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+*.egg-info/
+
+# 外部输入和可重建的大型产物
+/data/
+workdirs/
+runs/
+artifacts/scores/
+artifacts/sleeve/
+logs/
+*.log
+
+# 只允许版本化的最终权重目录
+weights/*
+!weights/README.md
+!weights/reward_v1/
+weights/reward_v1/*
+!weights/reward_v1/MANIFEST.json
+!weights/reward_v1/chunks/
+!weights/reward_v1/chunks/**
+!weights/reward_v1/preprocessing/
+!weights/reward_v1/preprocessing/**
+!weights/reward_h2_event_v1/
+weights/reward_h2_event_v1/*
+!weights/reward_h2_event_v1/MANIFEST.json
+!weights/reward_h2_event_v1/chunks/
+!weights/reward_h2_event_v1/chunks/**
+!weights/reward_h2_event_v1/preprocessing/
+!weights/reward_h2_event_v1/preprocessing/**

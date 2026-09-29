@@ -1,0 +1,19 @@
+name: reward_h2_event_v1_inference
+weight_bundle: reward_h2_event_v1
+nproc_per_node: 6
+module: models.reward.infer
+args:
+  root: workdirs/reward/market_all_h2_event_v1
+  kronos_root: workdirs/feature_store
+  checkpoint: weights/reward_h2_event_v1/reward_epoch018_inference.pt
+  ae_checkpoint: weights/reward_v1/ae_epoch020.pt
+  scaler_path: weights/reward_h2_event_v1/preprocessing/pre2020_eval2020_2026_h2_event_raw_relative_scaler.json
+  fold_id: pre2020_eval2020_2026
+  prediction_split: prediction
+  start: '2020-01-02'
+  end: '2026-07-08'
+  rank_horizon: 2
+  batch_size: 1952
+  amp_dtype: bf16
+  output: artifacts/scores/reward_h2_event_v1.parquet
+  overwrite: true

@@ -1,0 +1,40 @@
+name: reward_v1_h7_absolute_full_pair
+weight_bundle: reward_v1
+nproc_per_node: 8
+module: models.reward.train_h7_absolute
+args:
+  root: workdirs/reward/market_all_close2close_balanced_v2
+  kronos_root: workdirs/feature_store
+  labels: workdirs/reward/market_all_close2close_balanced_v2/data/h7_absolute_good_bad_v1/manifest.json
+  fold_id: pre2020_eval2020_2026
+  train_split: train
+  validation_split: validation
+  scaler_path: weights/reward_v1/preprocessing/pre2020_eval2020_2026_raw_relative_scaler.json
+  ae_checkpoint: weights/reward_v1/ae_epoch020.pt
+  ae_model_size: ae_wide_08
+  run_name: h7-absolute-return10-full-pair-20ep
+  input_mode: raw_relative
+  rank_horizon: 7
+  good_return_threshold: 0.10
+  epochs: 20
+  reward_d_model: 768
+  reward_layers: 7
+  reward_heads: 12
+  reward_mlp_ratio: 4.0
+  reward_dropout: 0.05
+  amp_dtype: bf16
+  lr: 0.00015
+  min_lr: 0.0
+  weight_decay: 0.1
+  warmup_ratio: 0.05
+  temperature: 1.0
+  logit_center_weight: 0.01
+  pair_block_size: 4096
+  score_batch_size: 2048
+  dates_per_step: 3
+  eval_batch_size: 8192
+  num_workers: 0
+  max_open_feature_shards: 16
+  grad_clip: 1.0
+  device: cuda
+  ddp: auto

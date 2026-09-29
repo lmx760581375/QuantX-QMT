@@ -1,0 +1,6 @@
+interface:
+  display_name: "QuantX Backtest"
+  short_description: "Run final QuantX Reward backtests, model workflows, sleeve reports, and verification"
+  default_prompt: "Use $quantx-backtest to validate final strategy configs, prepare Reward data, train or infer the Reward model, run formal backtests, reproduce the sleeve portfolio, and verify frozen baselines."
+policy:
+  allow_implicit_invocation: true

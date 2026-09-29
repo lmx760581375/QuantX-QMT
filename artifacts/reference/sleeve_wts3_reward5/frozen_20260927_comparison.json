@@ -1,0 +1,116 @@
+{
+  "runs": {
+    "wts5": "20260927_154247_weak_to_strong_pos5_common_cost_2020_2026_mainboard",
+    "reward5": "20260927_154258_reward_h7_top5_h15_only_2020_2026_all_a",
+    "wts3": "20260927_155041_weak_to_strong_pos3_common_cost_2020_2026_mainboard",
+    "reward2": "20260927_155049_reward_h7_top2_h15_2020_2026_all_a"
+  },
+  "variant_metrics": {
+    "baseline_5_plus_5": {
+      "total_return": 5.149655107616871,
+      "annual_return": 0.34328812556507016,
+      "annual_volatility": 0.25415409065715017,
+      "sharpe": 1.350708637730173,
+      "downside_volatility": 0.17859717870698566,
+      "sortino": 1.9221363296465264,
+      "max_drawdown": -0.23460810836435397,
+      "calmar": 1.463240669550656,
+      "monthly_win_rate": 0.6233766233766234,
+      "avg_cash_ratio": 0.08266737130236257
+    },
+    "wts3_reward5": {
+      "total_return": 6.79357732731842,
+      "annual_return": 0.3960008334144518,
+      "annual_volatility": 0.2643133223461985,
+      "sharpe": 1.498225022860439,
+      "downside_volatility": 0.18323916450951852,
+      "sortino": 2.1611145983689592,
+      "max_drawdown": -0.21892660126341446,
+      "calmar": 1.8088292200634861,
+      "monthly_win_rate": 0.6363636363636364,
+      "avg_cash_ratio": 0.08936721010503612
+    },
+    "wts5_reward2": {
+      "total_return": 5.042131811068774,
+      "annual_return": 0.33944387043897906,
+      "annual_volatility": 0.26151349860311435,
+      "sharpe": 1.2979975116088964,
+      "downside_volatility": 0.18106185531383676,
+      "sortino": 1.8747398222039469,
+      "max_drawdown": -0.25106901446226515,
+      "calmar": 1.3519942760200556,
+      "monthly_win_rate": 0.6493506493506493,
+      "avg_cash_ratio": 0.09101188978720981
+    },
+    "concentrated_3_plus_2": {
+      "total_return": 6.686054030770324,
+      "annual_return": 0.39285335103014196,
+      "annual_volatility": 0.27074821356350887,
+      "sharpe": 1.4509914797202943,
+      "downside_volatility": 0.18436416581158754,
+      "sortino": 2.130855252162297,
+      "max_drawdown": -0.24575956791814269,
+      "calmar": 1.5985271880075616,
+      "monthly_win_rate": 0.6493506493506493,
+      "avg_cash_ratio": 0.09737281021112584
+    }
+  },
+  "baseline_5_plus_5": {
+    "total_return": 5.149655107616871,
+    "annual_return": 0.34328812556507016,
+    "annual_volatility": 0.25415409065715017,
+    "sharpe": 1.350708637730173,
+    "downside_volatility": 0.17859717870698566,
+    "sortino": 1.9221363296465264,
+    "max_drawdown": -0.23460810836435397,
+    "calmar": 1.463240669550656,
+    "monthly_win_rate": 0.6233766233766234,
+    "avg_cash_ratio": 0.08266737130236257
+  },
+  "concentrated_3_plus_2": {
+    "total_return": 6.686054030770324,
+    "annual_return": 0.39285335103014196,
+    "annual_volatility": 0.27074821356350887,
+    "sharpe": 1.4509914797202943,
+    "downside_volatility": 0.18436416581158754,
+    "sortino": 2.130855252162297,
+    "max_drawdown": -0.24575956791814269,
+    "calmar": 1.5985271880075616,
+    "monthly_win_rate": 0.6493506493506493,
+    "avg_cash_ratio": 0.09737281021112584
+  },
+  "delta": {
+    "total_return": 1.5363989231534525,
+    "annual_return": 0.049565225465071805,
+    "annual_volatility": 0.0165941229063587,
+    "sharpe": 0.10028284199012139,
+    "downside_volatility": 0.005766987104601884,
+    "sortino": 0.20871892251577084,
+    "max_drawdown": -0.011151459553788712,
+    "calmar": 0.13528651845690565,
+    "monthly_win_rate": 0.025974025974025983,
+    "avg_cash_ratio": 0.014705438908763274
+  },
+  "position_diagnostics": {
+    "wts3": {
+      "intended_max_positions": 3,
+      "observed_max_positions": 3,
+      "days_above_intended_max": 0,
+      "avg_position_count": 2.580541237113402
+    },
+    "reward2": {
+      "intended_max_positions": 2,
+      "observed_max_positions": 3,
+      "days_above_intended_max": 2,
+      "avg_position_count": 1.996778350515464
+    }
+  },
+  "overlap": {
+    "days_with_positions": 1551,
+    "days_with_overlap": 0,
+    "overlap_day_ratio": 0.0,
+    "avg_overlapping_symbols": 0.0,
+    "max_overlapping_symbols": 0
+  },
+  "method": "Static 50/50 initial capital; no rebalance and no cross-sleeve cash transfer."
+}

@@ -1,0 +1,25 @@
+{
+  "run_id": "20260921_rewardh7_h15_only_v1",
+  "name": "reward_h7_top5_h15_only_2020_2026_all_a",
+  "description": "保持 Reward H7 Top5 的候选、T+1、成本、目标权重和仓位上限不变，仅将时间退出从第 7 个交易日改为第 15 个交易日，用于隔离验证延长持有本身的贡献。",
+  "version": 1,
+  "start_date": "2020-01-02",
+  "end_date": "2026-06-02",
+  "symbols": 5100,
+  "final_value": 473937392.8170993,
+  "total_return": 3.739373928170993,
+  "annual_return": 0.2742832220333822,
+  "max_drawdown": -0.43956576117136303,
+  "sharpe": 0.872130809183476,
+  "trades": 1161,
+  "buys": 520,
+  "sells": 641,
+  "final_cash": 10782279.854042694,
+  "final_positions": 5,
+  "time_stats": {
+    "phase1_signals": 8.322108030319214,
+    "phase2_execution": 5.450655698776245,
+    "total": 39.35041308403015
+  },
+  "signal_errors": []
+}

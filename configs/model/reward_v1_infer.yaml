@@ -1,0 +1,21 @@
+name: reward_v1_h7_absolute_inference
+weight_bundle: reward_v1
+nproc_per_node: 8
+module: models.reward.infer
+args:
+  root: workdirs/reward/market_all_close2close_balanced_v2
+  kronos_root: workdirs/feature_store
+  checkpoint: weights/reward_v1/reward_epoch009_inference.pt
+  ae_checkpoint: weights/reward_v1/ae_epoch020.pt
+  scaler_path: weights/reward_v1/preprocessing/pre2020_eval2020_2026_raw_relative_scaler.json
+  fold_id: pre2020_eval2020_2026
+  prediction_split: prediction
+  start: '2020-01-02'
+  end: '2026-07-15'
+  rank_horizon: 7
+  batch_size: 20000
+  max_batch_size: 20000
+  no_auto_batch_size: true
+  amp_dtype: bf16
+  output: artifacts/scores/reward_v1_historical.parquet
+  overwrite: true

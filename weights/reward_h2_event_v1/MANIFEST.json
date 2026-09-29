@@ -1,0 +1,42 @@
+{
+  "model_name": "reward_h2_event_good_bad_epoch18",
+  "reward_checkpoint": {
+    "path": "reward_epoch018_inference.pt",
+    "chunk_glob": "chunks/reward_epoch018_inference.pt.part-*",
+    "chunk_count": 4,
+    "sha256": "ba0a73674762a9cb90237fb55dcc20f8f1f8f347c511ba5791c7168eddf765c7",
+    "kind": "wts_frozen_ae_reward_transformer_checkpoint_v1",
+    "epoch": 18,
+    "contains_optimizer": false
+  },
+  "frozen_autoencoder": {
+    "path": "../reward_v1/ae_epoch020.pt",
+    "sha256": "d4b1532b8124c70215d3a067820748dcd1026f794f3c4f53bf1467fc9a2867f1",
+    "source_bundle": "reward_v1",
+    "epoch": 20
+  },
+  "preprocessing_scaler": {
+    "path": "preprocessing/pre2020_eval2020_2026_h2_event_raw_relative_scaler.json",
+    "sha256": "fba2617251f92faefb080f325050ee0ce52aa730a9a28e21e4b9877c7a8b7023",
+    "format": "FeatureScaler JSON v1",
+    "input_mode": "raw_relative",
+    "policy": "immutable; never refit during inference"
+  },
+  "score_contract": {
+    "rank_horizon": 2,
+    "label_mode": "event_good_bad",
+    "output_column": "reward_score_2d"
+  },
+  "selection_contract": {
+    "validation_period": "2019",
+    "selection_order": [
+      "top5_excess_avg_return desc",
+      "top5_good_lift desc",
+      "rankic_return_mean desc",
+      "epoch asc"
+    ],
+    "top5_excess_avg_return": 0.0028579302673432077,
+    "top5_good_lift": 4.477880689261995,
+    "rankic_return_mean": -0.030483668720231134
+  }
+}

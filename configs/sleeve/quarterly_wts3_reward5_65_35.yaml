@@ -1,0 +1,12 @@
+name: quarterly_wts3_reward5_65_35
+wts_config: configs/strategies/weak_to_strong_pos3.yaml
+reward_config: configs/strategies/reward_h7_runner.yaml
+score_path: artifacts/scores/reward_v1.parquet
+wts_weight: 0.65
+reward_weight: 0.35
+initial_cash: 100000000
+schedule: quarterly
+start: '2020-01-02'
+end: latest
+method: independent_accounts_cash_only_rebalance
+description: WTS Top3与RM v1 Top5 runner独立执行，季度首个交易日前按收盘资产仅划拨可用现金。

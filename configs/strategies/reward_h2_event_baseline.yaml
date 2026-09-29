@@ -1,0 +1,74 @@
+name: reward_h2_event_epoch018_top5_limit_hold
+title: Reward H2 Event Top5 涨停续持基准
+description: 冻结 epoch18 H2 event score；D+1 开盘买入，D+2 起若收盘涨停则继续持有，否则收盘卖出。
+version: 1
+data:
+  provider_uri: data/qlib_data_fixed
+  universe: all_a_no_star
+  start: '2020-01-02'
+  end: '2026-07-10'
+  look_back_days: 60
+fields:
+  open: $open
+  high: $high
+  low: $low
+  close: $close
+  change: $change
+signals:
+  buy_signal: close > 0
+selector:
+  mode: precomputed
+  where: buy_signal
+  score: close
+  sort: score_desc
+  topk: 5
+  lag: 1
+  wrap_first_signal: false
+  reason: reward_h2_event_epoch018_top5_limit_hold
+  external_score:
+    path: artifacts/scores/reward_h2_event_v1.parquet
+    date_col: signal_date
+    instrument_col: instrument
+    score_col: reward_score_2d
+    missing: drop
+    require_artifact_manifest: true
+rebalance:
+  type: equal_weight
+  max_positions: 10
+  weight_scope: portfolio_target
+  cash_use_ratio: 1.0
+  buy_only_new_positions: true
+execution:
+  deal_price: close
+  buy_deal_price: open
+  sell_deal_price: close
+  price_jump_limit: board_limit
+  sell_rules:
+  - name: force_exit_10d
+    when: holding_days >= 10
+    action: sell_all
+  - name: sell_unless_limit_up
+    when: holding_days >= 1 and not limit_up
+    action: sell_all
+  buy:
+    sizing: target_weight
+    lot_size: 100
+    skip_if_holding: true
+    skip_limit_up: false
+    reuse_sell_cash: true
+cost:
+  commission_rate: 0.000085
+  min_commission: 5.0
+  stamp_tax_rate: 0.0005
+  stamp_tax_on_buy: false
+  transfer_fee_rate: 0.0
+  slippage: 0.001
+engine:
+  init_cash: 100000000
+  historical_st_path: artifacts/reference/historical_st/historical_st_daily.parquet
+  validate_trading_rules: true
+  deal_price: close
+  max_workers: 1
+  error_policy: fail_fast
+  legacy_cost_price: false
+  auto_adjust_buy_quantity: true

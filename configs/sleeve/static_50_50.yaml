@@ -1,0 +1,5 @@
+name: reward_h15_weak_to_strong_static_50_50
+reward_weight: 0.5
+weak_to_strong_weight: 0.5
+method: initial_capital_static_sleeves
+description: 两个独立子账户只在初始时按 50/50 分配资金，之后不再平衡、不共享现金、不互相抢仓。

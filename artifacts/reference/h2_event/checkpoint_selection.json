@@ -1,0 +1,200 @@
+{
+  "kind": "quantx_h2_event_good_bad_checkpoint_selection_v1",
+  "selection_order": [
+    "top5_excess_avg_return desc",
+    "top5_good_lift desc",
+    "rankic_return_mean desc",
+    "epoch asc"
+  ],
+  "best": {
+    "epoch": 18,
+    "checkpoint": "reward_epoch_018.pt",
+    "top5_excess_avg_return": 0.0028579302673432077,
+    "top5_good_lift": 4.477880689261995,
+    "rankic_return_mean": -0.030483668720231134,
+    "top5_oracle_overlap": 0.021487603305785124,
+    "top5_oracle_return_gap": 0.19424691998268948
+  },
+  "epochs": [
+    {
+      "epoch": 1,
+      "checkpoint": "reward_epoch_001.pt",
+      "top5_excess_avg_return": -0.00011122294576368808,
+      "top5_good_lift": 4.809575555133254,
+      "rankic_return_mean": -0.040674436985746736,
+      "top5_oracle_overlap": 0.03305785123966942,
+      "top5_oracle_return_gap": 0.19721607319579637
+    },
+    {
+      "epoch": 2,
+      "checkpoint": "reward_epoch_002.pt",
+      "top5_excess_avg_return": 3.960537633951279e-05,
+      "top5_good_lift": 5.35687208382083,
+      "rankic_return_mean": -0.04201848111811069,
+      "top5_oracle_overlap": 0.03553719008264463,
+      "top5_oracle_return_gap": 0.19706524487369317
+    },
+    {
+      "epoch": 3,
+      "checkpoint": "reward_epoch_003.pt",
+      "top5_excess_avg_return": -0.0009539087831546824,
+      "top5_good_lift": 5.40662631370152,
+      "rankic_return_mean": -0.04084715133167545,
+      "top5_oracle_overlap": 0.03305785123966942,
+      "top5_oracle_return_gap": 0.19805875903318737
+    },
+    {
+      "epoch": 4,
+      "checkpoint": "reward_epoch_004.pt",
+      "top5_excess_avg_return": 0.00020993279149055704,
+      "top5_good_lift": 5.539304260050023,
+      "rankic_return_mean": -0.04000595735542168,
+      "top5_oracle_overlap": 0.033884297520661154,
+      "top5_oracle_return_gap": 0.19689491745854212
+    },
+    {
+      "epoch": 5,
+      "checkpoint": "reward_epoch_005.pt",
+      "top5_excess_avg_return": 0.0017897035082444297,
+      "top5_good_lift": 5.7549059228663415,
+      "rankic_return_mean": -0.041126083771347646,
+      "top5_oracle_overlap": 0.03801652892561983,
+      "top5_oracle_return_gap": 0.19531514674178826
+    },
+    {
+      "epoch": 6,
+      "checkpoint": "reward_epoch_006.pt",
+      "top5_excess_avg_return": 0.0013953185388799172,
+      "top5_good_lift": 5.506134773462897,
+      "rankic_return_mean": -0.038164203780846784,
+      "top5_oracle_overlap": 0.0371900826446281,
+      "top5_oracle_return_gap": 0.19570953171115277
+    },
+    {
+      "epoch": 7,
+      "checkpoint": "reward_epoch_007.pt",
+      "top5_excess_avg_return": 0.0003503042914585262,
+      "top5_good_lift": 5.273948367353016,
+      "rankic_return_mean": -0.03753707011730926,
+      "top5_oracle_overlap": 0.02727272727272727,
+      "top5_oracle_return_gap": 0.19675454595857417
+    },
+    {
+      "epoch": 8,
+      "checkpoint": "reward_epoch_008.pt",
+      "top5_excess_avg_return": 0.0006455592982959769,
+      "top5_good_lift": 5.373456827114394,
+      "rankic_return_mean": -0.035739730308373165,
+      "top5_oracle_overlap": 0.032231404958677684,
+      "top5_oracle_return_gap": 0.1964592909517367
+    },
+    {
+      "epoch": 9,
+      "checkpoint": "reward_epoch_009.pt",
+      "top5_excess_avg_return": -0.003263296262101337,
+      "top5_good_lift": 4.909084014894631,
+      "rankic_return_mean": -0.03437287557499415,
+      "top5_oracle_overlap": 0.02231404958677686,
+      "top5_oracle_return_gap": 0.20036814651213403
+    },
+    {
+      "epoch": 10,
+      "checkpoint": "reward_epoch_010.pt",
+      "top5_excess_avg_return": -0.002492432543863578,
+      "top5_good_lift": 4.826160298426816,
+      "rankic_return_mean": -0.03578468134833802,
+      "top5_oracle_overlap": 0.02809917355371901,
+      "top5_oracle_return_gap": 0.19959728279389627
+    },
+    {
+      "epoch": 11,
+      "checkpoint": "reward_epoch_011.pt",
+      "top5_excess_avg_return": 0.0015160583870404633,
+      "top5_good_lift": 4.992007731362446,
+      "rankic_return_mean": -0.03299858498037512,
+      "top5_oracle_overlap": 0.02975206611570248,
+      "top5_oracle_return_gap": 0.19558879186299222
+    },
+    {
+      "epoch": 12,
+      "checkpoint": "reward_epoch_012.pt",
+      "top5_excess_avg_return": -0.00031499383745768605,
+      "top5_good_lift": 4.527634919142683,
+      "rankic_return_mean": -0.03261980769842852,
+      "top5_oracle_overlap": 0.0256198347107438,
+      "top5_oracle_return_gap": 0.19741984408749036
+    },
+    {
+      "epoch": 13,
+      "checkpoint": "reward_epoch_013.pt",
+      "top5_excess_avg_return": 0.0017278986639162352,
+      "top5_good_lift": 4.79299081183969,
+      "rankic_return_mean": -0.03553186820244021,
+      "top5_oracle_overlap": 0.02809917355371901,
+      "top5_oracle_return_gap": 0.19537695158611645
+    },
+    {
+      "epoch": 14,
+      "checkpoint": "reward_epoch_014.pt",
+      "top5_excess_avg_return": 0.00039717659594930114,
+      "top5_good_lift": 4.643728122197624,
+      "rankic_return_mean": -0.034114184886311114,
+      "top5_oracle_overlap": 0.024793388429752067,
+      "top5_oracle_return_gap": 0.1967076736540834
+    },
+    {
+      "epoch": 15,
+      "checkpoint": "reward_epoch_015.pt",
+      "top5_excess_avg_return": 0.0006657820705474526,
+      "top5_good_lift": 4.4944654325555575,
+      "rankic_return_mean": -0.03229402240933095,
+      "top5_oracle_overlap": 0.023966942148760332,
+      "top5_oracle_return_gap": 0.19643906817948523
+    },
+    {
+      "epoch": 16,
+      "checkpoint": "reward_epoch_016.pt",
+      "top5_excess_avg_return": 0.0023357502795382594,
+      "top5_good_lift": 4.3286179996199285,
+      "rankic_return_mean": -0.032224300673724365,
+      "top5_oracle_overlap": 0.023140495867768594,
+      "top5_oracle_return_gap": 0.19476909997049444
+    },
+    {
+      "epoch": 17,
+      "checkpoint": "reward_epoch_017.pt",
+      "top5_excess_avg_return": 0.002733323654057923,
+      "top5_good_lift": 4.726651838665439,
+      "rankic_return_mean": -0.03328202351346866,
+      "top5_oracle_overlap": 0.024793388429752067,
+      "top5_oracle_return_gap": 0.19437152659597476
+    },
+    {
+      "epoch": 18,
+      "checkpoint": "reward_epoch_018.pt",
+      "top5_excess_avg_return": 0.0028579302673432077,
+      "top5_good_lift": 4.477880689261995,
+      "rankic_return_mean": -0.030483668720231134,
+      "top5_oracle_overlap": 0.021487603305785124,
+      "top5_oracle_return_gap": 0.19424691998268948
+    },
+    {
+      "epoch": 19,
+      "checkpoint": "reward_epoch_019.pt",
+      "top5_excess_avg_return": 0.0018901188129170497,
+      "top5_good_lift": 4.1296010800971725,
+      "rankic_return_mean": -0.029279677018311686,
+      "top5_oracle_overlap": 0.02066115702479339,
+      "top5_oracle_return_gap": 0.19521473143711562
+    },
+    {
+      "epoch": 20,
+      "checkpoint": "reward_epoch_020.pt",
+      "top5_excess_avg_return": 0.0017247003574936471,
+      "top5_good_lift": 4.2125247965649875,
+      "rankic_return_mean": -0.02967748408779162,
+      "top5_oracle_overlap": 0.02066115702479339,
+      "top5_oracle_return_gap": 0.19538014989253905
+    }
+  ]
+}
