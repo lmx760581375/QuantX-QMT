@@ -8,12 +8,59 @@ import logging
 import io
 import socket
 import time
+import zlib
 from contextlib import redirect_stdout
 from typing import List, Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _install_safe_socket_reader(timeout: float) -> None:
+    """Patch BaoStock's EOF handling without modifying the installed package.
+
+    BaoStock's bundled reader retries ``recv`` forever when the server closes
+    the connection and returns ``b""``.  Treating EOF as a connection error
+    lets the caller reconnect and apply its normal retry policy.
+    """
+    import baostock.common.context as context
+    import baostock.common.contants as constants
+    import baostock.util.socketutil as socketutil
+
+    marker = "_quantx_safe_socket_reader"
+    setattr(socketutil, "_quantx_socket_timeout", timeout)
+    if getattr(socketutil, marker, False):
+        return
+
+    def send_msg(message: str):
+        default_socket = getattr(context, "default_socket", None)
+        if default_socket is None:
+            return None
+        default_socket.settimeout(getattr(socketutil, "_quantx_socket_timeout", timeout))
+        default_socket.send(bytes(message + "\n", encoding="utf-8"))
+        receive = bytearray()
+        while True:
+            chunk = default_socket.recv(8192)
+            if not chunk:
+                raise ConnectionError("BaoStock server closed the connection")
+            receive.extend(chunk)
+            if receive[-13:] == b"<![CDATA[]]>\n":
+                break
+
+        head_bytes = bytes(receive[: constants.MESSAGE_HEADER_LENGTH])
+        head_str = head_bytes.decode()
+        head_arr = head_str.split(constants.MESSAGE_SPLIT)
+        if head_arr[1] in constants.COMPRESSED_MESSAGE_TYPE_TUPLE:
+            inner_length = int(head_arr[2])
+            body = zlib.decompress(
+                bytes(receive[constants.MESSAGE_HEADER_LENGTH : constants.MESSAGE_HEADER_LENGTH + inner_length])
+            ).decode()
+            return head_str + body
+        return bytes(receive).decode()
+
+    setattr(socketutil, "send_msg", send_msg)
+    setattr(socketutil, marker, True)
 
 # BaoStock 字段名 → 标准化字段名
 FIELD_RENAME_MAP = {
@@ -50,6 +97,7 @@ class BaoStockClient:
         self.socket_timeout = socket_timeout
         self._logged_in = False
         self._previous_socket_timeout = None
+        self._timeout_initialized = False
 
     def __enter__(self):
         self.login()
@@ -62,8 +110,11 @@ class BaoStockClient:
         """登录 BaoStock"""
         import baostock as bs
 
-        self._previous_socket_timeout = socket.getdefaulttimeout()
+        if not self._timeout_initialized:
+            self._previous_socket_timeout = socket.getdefaulttimeout()
+            self._timeout_initialized = True
         socket.setdefaulttimeout(self.socket_timeout)
+        _install_safe_socket_reader(self.socket_timeout)
         try:
             with redirect_stdout(io.StringIO()):
                 result = bs.login()
@@ -82,16 +133,21 @@ class BaoStockClient:
         if self._logged_in:
             import baostock as bs
 
-            with redirect_stdout(io.StringIO()):
-                bs.logout()
+            try:
+                with redirect_stdout(io.StringIO()):
+                    bs.logout()
+            except Exception as exc:
+                logger.warning("BaoStock logout failed after connection error: %s", exc)
             self._logged_in = False
+        if self._previous_socket_timeout is not None:
             self._restore_socket_timeout()
-            logger.info("BaoStock logout")
+        logger.info("BaoStock logout")
         return True
 
     def _restore_socket_timeout(self) -> None:
         socket.setdefaulttimeout(self._previous_socket_timeout)
         self._previous_socket_timeout = None
+        self._timeout_initialized = False
 
     # ============================================================
     # 股票列表
@@ -195,17 +251,21 @@ class BaoStockClient:
         self, symbol: str, start_date: str, end_date: str, **kwargs
     ) -> pd.DataFrame:
         """带重试的 K 线数据查询"""
-        for attempt in range(self.max_retries):
+        attempts = max(1, int(self.max_retries))
+        for attempt in range(attempts):
             try:
                 df = self.query_history_k_data(symbol, start_date, end_date, **kwargs)
                 if not df.empty:
                     return df
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.pause_seconds * (attempt + 1))
+                error = "empty response"
             except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed for {symbol}: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.pause_seconds * (attempt + 1))
+                error = str(e)
+            logger.warning("Attempt %s/%s failed for %s: %s", attempt + 1, attempts, symbol, error)
+            if attempt >= attempts - 1:
+                break
+            self._reset_connection()
+            time.sleep(self.pause_seconds * (attempt + 1))
+            self.login()
         return pd.DataFrame()
 
     # ============================================================
@@ -299,6 +359,19 @@ class BaoStockClient:
         """确保已登录"""
         if not self._logged_in:
             self.login()
+
+    def _reset_connection(self) -> None:
+        """Close a broken BaoStock socket before the next retry."""
+        import baostock.common.context as context
+
+        default_socket = getattr(context, "default_socket", None)
+        if default_socket is not None:
+            try:
+                default_socket.close()
+            except OSError:
+                pass
+        context.default_socket = None
+        self._logged_in = False
 
     def _process_k_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """处理 K 线数据：类型转换、字段重命名"""

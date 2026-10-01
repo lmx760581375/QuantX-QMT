@@ -6,7 +6,7 @@
 
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import Callable, List, Tuple
 
@@ -114,6 +114,7 @@ class DataSyncService:
                     start,
                     end,
                     retry_report,
+                    progress_callback=progress_callback,
                 )
             report.synced_count += retry_report.synced_count
             report.updated_stocks.extend(retry_report.updated_stocks)
@@ -234,39 +235,46 @@ class DataSyncService:
         report: SyncReport,
         progress_callback: Callable[[SyncReport], None] | None = None,
     ) -> List[str]:
-        """批量同步（多线程分片）"""
+        """批量同步，限制在途任务数量，避免一个卡住请求拖垮整个队列。"""
         failed = []
 
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            futures = {}
-            for symbol in symbols:
-                future = executor.submit(
-                    self._sync_single,
-                    symbol,
-                    start,
-                    end,
-                )
-                futures[future] = symbol
+            pending = {}
+            symbol_iter = iter(symbols)
 
-            for future in as_completed(futures):
-                symbol = futures[future]
+            def submit_next() -> None:
                 try:
-                    df, success = future.result()
-                    if success and not df.empty:
-                        self.repository.save_symbol(symbol, df)
-                        report.synced_count += 1
-                        report.updated_stocks.append(symbol)
-                    else:
+                    symbol = next(symbol_iter)
+                except StopIteration:
+                    return
+                future = executor.submit(self._sync_single, symbol, start, end)
+                pending[future] = symbol
+
+            for _ in range(min(max(1, int(self.workers)), len(symbols))):
+                submit_next()
+
+            while pending:
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    symbol = pending.pop(future)
+                    try:
+                        df, success = future.result()
+                        if success and not df.empty:
+                            self.repository.save_symbol(symbol, df)
+                            report.synced_count += 1
+                            report.updated_stocks.append(symbol)
+                        else:
+                            failed.append(symbol)
+                            report.failed_count += 1
+                            report.failed_symbols.append(symbol)
+                    except Exception as e:
+                        logger.error(f"Sync failed for {symbol}: {e}")
                         failed.append(symbol)
                         report.failed_count += 1
                         report.failed_symbols.append(symbol)
-                except Exception as e:
-                    logger.error(f"Sync failed for {symbol}: {e}")
-                    failed.append(symbol)
-                    report.failed_count += 1
-                    report.failed_symbols.append(symbol)
-                if progress_callback is not None:
-                    progress_callback(report)
+                    if progress_callback is not None:
+                        progress_callback(report)
+                    submit_next()
 
         return failed
 

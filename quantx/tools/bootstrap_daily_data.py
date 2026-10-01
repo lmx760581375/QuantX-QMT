@@ -259,9 +259,27 @@ def bootstrap_daily_data(
     )
     missing = [symbol for symbol in symbols if repository.load_symbol(symbol).empty]
     if missing:
+        failure_path = metadata_dir / "bootstrap_failures.json"
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        failure_path.write_text(
+            json.dumps(
+                {
+                    "start": str(start),
+                    "end": str(end),
+                    "total_symbols": len(symbols),
+                    "completed_symbols": len(symbols) - len(missing),
+                    "missing_symbols": missing,
+                    "sync": asdict(report),
+                    "resume_command": "re-run bootstrap-data with --resume after the network recovers",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         raise RuntimeError(
             f"BaoStock bootstrap incomplete: {len(missing)} symbols have no local CSV; "
-            f"examples={missing[:10]}"
+            f"examples={missing[:10]}; details={failure_path}"
         )
 
     converter = BaostockToQlibConverter(
