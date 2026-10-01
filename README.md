@@ -78,6 +78,61 @@ quantx-reward update-data \
   --end 2026-09-28
 ```
 
+### 下载中断与恢复
+
+BaoStock 偶尔会在响应中途关闭连接，或因网络问题长时间无响应。全量下载默认以单 worker
+执行；每个请求有 30 秒 socket 超时、3 次退避重试。重试前会关闭旧连接并重新登录，批处理也只
+保留有限数量的在途任务，因此单只股票失败不会让整个下载队列永久停在 `pending`。
+
+建议长任务记录日志：
+
+```bash
+nohup quantx-reward bootstrap-data \
+  --data-root /path/to/data \
+  --start 2010-01-01 \
+  --end 2026-09-28 \
+  --workers 1 \
+  --pause-seconds 0.5 \
+  --max-retries 3 \
+  --socket-timeout 30 \
+  > logs/bootstrap_reward.log 2>&1 &
+```
+
+任务仍有失败时会以非零状态结束，并把未取得原始 CSV 的股票和恢复命令写到
+`<data-root>/meta/snapshots/bootstrap_failures.json`。网络恢复后使用同一参数加
+`--resume`；该选项只补拉缺失或空的原始 CSV，不覆盖已有文件：
+
+```bash
+quantx-reward bootstrap-data \
+  --data-root /path/to/data \
+  --start 2010-01-01 \
+  --end 2026-09-28 \
+  --resume
+```
+
+`bootstrap-data` 成功不代表严格复现成功。BaoStock 可以事后修订前复权历史行情，必须继续
+执行 `data-manifest verify`。如 manifest 不一致，结果应标记为新的数据版本，而非冻结基线复现。
+
+### 特征仓时间边界
+
+特征仓的起点必须覆盖完整的数据合同历史，即当前正式基线使用 `2010-01-01`，而不是回测开始日
+或其前一年。动态 universe 的 `history_lt_80` 条件从特征仓起点累计有效交易日；若从 2019 年
+开始构建 2020 年回测，曾停牌或 ST 后恢复的股票可能因累计历史不足而错误缺少 score。
+
+仅为推理重建特征时使用 `inference` stage；它不生成未来标签、Reward dataset 或训练工件。请
+使用独立输出目录，避免覆盖已验证的特征仓：
+
+```bash
+python -u -m models.reward.prepare_features \
+  --stage inference \
+  --output-root workdirs/feature_store_2010_inference \
+  --provider-uri /path/to/data/qlib_data_fixed \
+  --raw-stock-dir /path/to/data/raw/baostock/stocks \
+  --start 2010-01-01 \
+  --end 2026-09-28 \
+  --shard-size 512
+```
+
 ## 正式权重
 
 ```bash
@@ -147,6 +202,16 @@ quantx-reward merge-scores \
 
 合并时保留截止日及以前的历史 score，仅采用截止日之后的增量 score，并重新生成
 `quantx_market_score_artifact_v1` manifest。
+
+### macOS / Apple Silicon
+
+在没有 CUDA 的 Apple Silicon 主机上，`device=auto` 会自动选择 MPS。MPS 推理只能单进程，
+因此 `quantx-reward infer` 与 `quantx-reward reproduce-full` 会把原本用于 CUDA 的多进程推理
+配置自动改为单进程并设置 `--ddp off`；不要在 MPS 上手工使用多进程 `torchrun`。
+
+MPS 适合在 Mac 上导出 score 和复现回测，但严格复现仍要求使用相同的冻结行情、特征合同、权重、
+scaler 和 score。若上游数据或设备数值路径不同，必须先通过 score 与回测审计，不能仅凭模型权重
+一致声明结果相同。
 
 ## 回测
 
