@@ -17,6 +17,7 @@ from quantx_reward.config import (
     resolve_repo_path,
 )
 from quantx_reward.verify import compare_metrics, restore_weights, verify_environment
+from models.reward.launcher import prepare_inference_launch
 
 
 DEFAULT_REFERENCE_MANIFEST = REPO_ROOT / "artifacts" / "reference" / "data_20260928" / "MANIFEST.json"
@@ -70,6 +71,7 @@ def _distributed_module_command(
     *,
     nproc_per_node: int,
 ) -> list[str]:
+    module_args, nproc_per_node = prepare_inference_launch(module, module_args, nproc_per_node)
     cli_args = args_mapping_to_cli(module_args)
     if int(nproc_per_node) <= 1:
         return [sys.executable, "-m", module, *cli_args]

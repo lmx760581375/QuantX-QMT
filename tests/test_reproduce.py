@@ -1,5 +1,7 @@
 from argparse import Namespace
 
+import torch
+
 from quantx_reward.reproduce import build_reproduction_plan
 
 
@@ -53,5 +55,10 @@ def test_reproduction_plan_contains_complete_pipeline(tmp_path):
 
     args.nproc_per_node = 8
     distributed = build_reproduction_plan(args)["commands"]["historical_infer"]
-    assert "--standalone" in distributed
-    assert "--" in distributed
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and not torch.cuda.is_available():
+        assert "--standalone" not in distributed
+        assert "--device" in distributed and "mps" in distributed
+        assert "--ddp" in distributed and "off" in distributed
+    else:
+        assert "--standalone" in distributed
+        assert "--" in distributed

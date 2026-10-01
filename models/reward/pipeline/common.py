@@ -270,7 +270,18 @@ def set_seed(seed: int) -> None:
 
 def resolve_device(value: str) -> torch.device:
     if value == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    if value == "mps":
+        if not hasattr(torch.backends, "mps") or not torch.backends.mps.is_available():
+            raise RuntimeError("MPS was requested but is unavailable in this PyTorch runtime")
+    if value not in {"cpu", "cuda", "mps"}:
+        raise ValueError(f"Unsupported device: {value!r}; expected one of cpu, cuda, mps, auto")
+    if value == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is unavailable in this PyTorch runtime")
     return torch.device(value)
 
 

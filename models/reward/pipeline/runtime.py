@@ -70,6 +70,13 @@ def init_distributed(args: argparse.Namespace) -> DistributedContext:
             device=resolve_device(args.device),
             backend=None,
         )
+    if args.device == "mps" or (
+        args.device == "auto"
+        and hasattr(torch.backends, "mps")
+        and torch.backends.mps.is_available()
+        and not torch.cuda.is_available()
+    ):
+        raise RuntimeError("MPS inference is single-process only; use --ddp off or omit torchrun")
     rank = int(os.environ.get("RANK", "0"))
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if args.device == "cpu":

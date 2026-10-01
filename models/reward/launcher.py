@@ -10,6 +10,32 @@ from pathlib import Path
 from quantx_reward.config import args_mapping_to_cli, load_yaml, print_json, resolve_repo_path
 
 
+def prepare_inference_launch(
+    module: str,
+    module_args: dict,
+    nproc_per_node: int,
+) -> tuple[dict, int]:
+    """Use one explicit MPS process for inference on Apple Silicon."""
+
+    nproc = int(nproc_per_node)
+    if not module.endswith(".infer") or nproc <= 1:
+        return module_args, nproc
+    try:
+        import torch
+    except ImportError:
+        return module_args, nproc
+    requested_device = str(module_args.get("device", "auto")).lower()
+    if requested_device not in {"auto", "mps"}:
+        return module_args, nproc
+    mps = getattr(torch.backends, "mps", None)
+    if torch.cuda.is_available() or mps is None or not mps.is_available():
+        return module_args, nproc
+    args = dict(module_args)
+    args["device"] = "mps"
+    args["ddp"] = "off"
+    return args, 1
+
+
 def build_command(
     config_path: str | Path,
     *,
@@ -25,8 +51,9 @@ def build_command(
         raise ValueError("Model launch config requires module")
     args = dict(config.get("args") or {})
     positional = ("command",) if module.endswith(".train") else ()
-    module_args = args_mapping_to_cli(args, positional_keys=positional)
     nproc = int(nproc_per_node or config.get("nproc_per_node", 1))
+    args, nproc = prepare_inference_launch(module, args, nproc)
+    module_args = args_mapping_to_cli(args, positional_keys=positional)
     nodes = int(nnodes)
     if nproc <= 1 and nodes <= 1:
         return [sys.executable, "-m", module, *module_args]

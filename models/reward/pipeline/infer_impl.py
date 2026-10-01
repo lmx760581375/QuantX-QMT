@@ -123,7 +123,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-gpu-memory-fraction", type=float, default=0.86)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--amp-dtype", default="bf16", choices=["off", "bf16", "fp16"])
-    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
     parser.add_argument("--ddp", default="auto", choices=["auto", "off"])
     parser.add_argument("--log-every-steps", type=int, default=20)
     parser.add_argument("--output", required=True)
